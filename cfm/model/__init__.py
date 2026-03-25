@@ -41,6 +41,14 @@ def load_model_from_checkpoint(
     ckpt = torch.load(checkpoint_path, map_location=device, weights_only=False)
     config = ckpt["config"]
 
+    # Backward compat: old checkpoints lack intermediate block fields
+    if not hasattr(config, "intermediate_blocks"):
+        config.intermediate_blocks = []
+    if not hasattr(config, "intermediate_representation"):
+        config.intermediate_representation = "sqrt"
+    if not hasattr(config, "cond_dim"):
+        config.cond_dim = config.context_days + 1
+
     model = ConditionalVectorField(
         output_dim=config.output_dim,
         cond_dim=config.cond_dim,

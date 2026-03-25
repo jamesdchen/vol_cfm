@@ -46,6 +46,8 @@ class CFMTrainer:
                 val_end=config.val_end,
                 batch_size=config.batch_size,
                 seed=config.seed,
+                intermediate_blocks=config.intermediate_blocks,
+                intermediate_representation=config.intermediate_representation,
             )
         )
 

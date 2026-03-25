@@ -38,6 +38,8 @@ def build_dataloaders(
     val_end: str = "2022-12-31",
     batch_size: int = 256,
     seed: int = 42,
+    intermediate_blocks: list[int] | None = None,
+    intermediate_representation: str = "sqrt",
 ) -> tuple[DataLoader, DataLoader, DataLoader, dict]:
     """End-to-end dataloader construction.
 
@@ -54,6 +56,10 @@ def build_dataloaders(
     batch_size : int
     seed : int
         Random seed for train loader shuffling.
+    intermediate_blocks : list[int] or None
+        Block sizes for sub-daily RV conditioning.
+    intermediate_representation : str
+        Encoding for intermediate RV: "sqrt", "proportion", or "both".
 
     Returns
     -------
@@ -62,7 +68,9 @@ def build_dataloaders(
     # Build full dataset
     rv_df = load_rv(harxhar_path)
     daily_df = compute_daily_rv(rv_df)
-    conditions, proportions, dates = build_cfm_pairs(daily_df, context_days)
+    conditions, proportions, dates = build_cfm_pairs(
+        daily_df, context_days, intermediate_blocks, intermediate_representation,
+    )
 
     # Parse split dates
     train_end_dt = datetime.date.fromisoformat(train_end)

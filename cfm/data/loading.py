@@ -95,8 +95,29 @@ def compute_daily_rv(df: pd.DataFrame) -> pd.DataFrame:
     return daily
 
 
+def compute_block_rv(intraday_48: np.ndarray, block_size: int) -> np.ndarray:
+    """Reshape (48,) intraday RV into blocks and sum within each block.
+
+    Parameters
+    ----------
+    intraday_48 : np.ndarray, shape (48,)
+        Individual 30-min RV bars for one day.
+    block_size : int
+        Number of 30-min bars per block. Must evenly divide 48.
+
+    Returns
+    -------
+    np.ndarray, shape (48 // block_size,)
+    """
+    n_blocks = PERIODS_PER_DAY // block_size
+    return intraday_48.reshape(n_blocks, block_size).sum(axis=1)
+
+
 def build_cfm_pairs(
-    daily_df: pd.DataFrame, context_days: int = 5
+    daily_df: pd.DataFrame,
+    context_days: int = 5,
+    intermediate_blocks: list[int] | None = None,
+    intermediate_representation: str = "sqrt",
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Build (condition, target) pairs for conditional flow matching.
 
@@ -106,16 +127,24 @@ def build_cfm_pairs(
         Output of compute_daily_rv with columns [date, daily_rv, intraday_48].
     context_days : int
         Number of lagged daily RV values in the condition vector.
+    intermediate_blocks : list[int] or None
+        Block sizes (in 30-min bars) for sub-daily RV conditioning.
+        E.g., [12] gives 4 quarter-day (6h) blocks per lag day.
+    intermediate_representation : str
+        How to encode intermediate RV: "sqrt", "proportion", or "both".
 
     Returns
     -------
-    conditions : np.ndarray, shape (N, context_days + 1)
-        [sqrt(daily_rv_today), sqrt(daily_rv_{t-1}), ..., sqrt(daily_rv_{t-context_days})]
+    conditions : np.ndarray, shape (N, cond_dim)
+        Daily sqrt(RV) features followed by intermediate RV features from lagged days.
     proportions : np.ndarray, shape (N, 48)
         Intraday RV as proportion of daily total.
     dates : np.ndarray, shape (N,)
         Date for each sample.
     """
+    if intermediate_blocks is None:
+        intermediate_blocks = []
+
     daily_rv = daily_df["daily_rv"].values
     intraday = np.stack(daily_df["intraday_48"].values)
     dates_arr = daily_df["date"].values
@@ -127,11 +156,21 @@ def build_cfm_pairs(
     dates_list = []
 
     for i in range(context_days, len(daily_df)):
-        # condition: [sqrt(rv_today), sqrt(rv_{t-1}), ..., sqrt(rv_{t-context_days})]
-        cond = sqrt_rv[i - context_days : i + 1][::-1].copy()  # today first, then lags
+        # Daily sqrt(RV): [today, t-1, ..., t-context_days]
+        cond_parts = [sqrt_rv[i - context_days : i + 1][::-1].copy()]
+
+        # Intermediate features from lagged days only (t-1 through t-context_days)
+        for j in range(1, context_days + 1):
+            for bs in intermediate_blocks:
+                block_rv = compute_block_rv(intraday[i - j], bs)
+                if intermediate_representation in ("sqrt", "both"):
+                    cond_parts.append(np.sqrt(block_rv))
+                if intermediate_representation in ("proportion", "both"):
+                    cond_parts.append(block_rv / daily_rv[i - j])
+
         prop = intraday[i] / daily_rv[i]
 
-        conditions_list.append(cond)
+        conditions_list.append(np.concatenate(cond_parts))
         proportions_list.append(prop)
         dates_list.append(dates_arr[i])
 

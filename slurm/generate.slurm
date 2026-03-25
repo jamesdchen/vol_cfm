@@ -10,12 +10,20 @@
 #SBATCH --account=pollok_1603
 #SBATCH --time=0:30:00
 #SBATCH --chdir=/home1/jc_905/vol-cfm
-#SBATCH --output=logs/generate_%j.out
-#SBATCH --error=logs/generate_%j.err
+#SBATCH --output=logs/generate_%A_%a.out
+#SBATCH --error=logs/generate_%A_%a.err
 
 source /home1/jc_905/.bashrc
 conda activate project-cucuringu
 
 mkdir -p logs
 
-python scripts/generate.py --checkpoint ${CHECKPOINT:?"CHECKPOINT env var required"}
+# Seed = base seed + array task ID (defaults to task 0 if not an array job)
+SEED=$(( ${BASE_SEED:-42} + ${SLURM_ARRAY_TASK_ID:-0} ))
+
+python scripts/generate.py \
+    --checkpoint ${CHECKPOINT:?"CHECKPOINT env var required"} \
+    --output-dir ${OUTPUT_DIR:-samples} \
+    --num-samples-per-day ${NUM_SAMPLES_PER_DAY:-1} \
+    --split ${SPLIT:-test} \
+    --seed ${SEED}

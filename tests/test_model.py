@@ -46,3 +46,19 @@ def test_time_embedding_shape():
     t = torch.rand(B)
     out = emb(t)
     assert out.shape == (B, embed_dim)
+
+
+def test_vector_field_expanded_cond_dim():
+    """Verify forward pass works with larger cond_dim (intermediate conditioning)."""
+    B, output_dim, cond_dim = 8, 48, 26  # e.g., 6 daily + 4 blocks * 5 lags
+    model = ConditionalVectorField(
+        output_dim=output_dim, cond_dim=cond_dim, hidden_dims=[64, 64]
+    )
+    model.eval()
+
+    x_t = torch.randn(B, output_dim)
+    t = torch.rand(B)
+    cond = torch.randn(B, cond_dim)
+
+    out = model(x_t, t, cond)
+    assert out.shape == (B, output_dim)

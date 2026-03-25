@@ -33,6 +33,16 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--val-end", type=str, default="2022-12-31")
     parser.add_argument("--checkpoint-every", type=int, default=10)
     parser.add_argument("--sigma-min", type=float, default=1e-4)
+    parser.add_argument(
+        "--intermediate-blocks", type=int, nargs="*", default=[],
+        help="Block sizes (in 30-min bars) for intermediate RV conditioning. "
+             "E.g., 12 for 6h blocks, 6 for 3h blocks. Empty = baseline.",
+    )
+    parser.add_argument(
+        "--intermediate-representation", type=str, default="sqrt",
+        choices=["sqrt", "proportion", "both"],
+        help="How to represent intermediate RV features.",
+    )
     parser.add_argument("--verbose", action="store_true", help="Enable debug logging")
     parser.add_argument("--quiet", action="store_true", help="Only show warnings and errors")
 
@@ -59,6 +69,8 @@ def main():
         seed=args.seed,
         checkpoint_every=args.checkpoint_every,
         sigma_min=args.sigma_min,
+        intermediate_blocks=args.intermediate_blocks,
+        intermediate_representation=args.intermediate_representation,
         checkpoint_dir=args.checkpoint_dir,
     )
 
