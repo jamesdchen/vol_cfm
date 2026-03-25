@@ -9,8 +9,6 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import datetime
-import logging
 from pathlib import Path
 
 import numpy as np
@@ -18,10 +16,13 @@ import torch
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
 
-from cfm.data.dataset import build_dataloaders
-from cfm.data.loading import build_cfm_pairs, compute_daily_rv, load_rv
-from cfm.logging import get_logger
-from cfm.model import load_model_from_checkpoint
+from cfm.cli import (
+    build_dataloaders_from_config,
+    get_split_mask,
+    load_checkpoint_and_device,
+    load_raw_pairs_from_config,
+    setup_logging,
+)
 from cfm.model.sampler import CFMSampler
 
 
@@ -40,29 +41,13 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def _split_mask(
-    dates_raw: np.ndarray,
-    split_name: str,
-    train_end_dt: datetime.date,
-    val_end_dt: datetime.date,
-) -> np.ndarray:
-    if split_name == "train":
-        return dates_raw <= np.datetime64(train_end_dt)
-    elif split_name == "val":
-        return (dates_raw > np.datetime64(train_end_dt)) & (dates_raw <= np.datetime64(val_end_dt))
-    else:
-        return dates_raw > np.datetime64(val_end_dt)
-
-
 def main():
     args = parse_args()
 
-    level = logging.DEBUG if args.verbose else logging.WARNING if args.quiet else logging.INFO
-    logger = get_logger("cfm", level)
+    logger = setup_logging(args)
 
     # Load checkpoint
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model, scaler_stats, config = load_model_from_checkpoint(args.checkpoint, device)
+    model, scaler_stats, config, device = load_checkpoint_and_device(args.checkpoint)
 
     # Resolve seed
     seed = args.seed if args.seed is not None else config.seed
@@ -70,31 +55,12 @@ def main():
     np.random.seed(seed)
 
     # Build dataloaders
-    train_loader, val_loader, test_loader, _ = build_dataloaders(
-        harxhar_path=args.harxhar_path,
-        context_days=config.context_days,
-        train_end=config.train_end,
-        val_end=config.val_end,
-        batch_size=config.batch_size,
-        seed=seed,
-        intermediate_blocks=getattr(config, "intermediate_blocks", []),
-        intermediate_representation=getattr(config, "intermediate_representation", "sqrt"),
-    )
+    train_loader, val_loader, test_loader, _ = build_dataloaders_from_config(args.harxhar_path, config, seed)
 
     split_map = {"train": train_loader, "val": val_loader, "test": test_loader}
 
     # Raw conditions for denormalization
-    rv_df = load_rv(args.harxhar_path)
-    daily_df = compute_daily_rv(rv_df)
-    conditions_raw, _, dates_raw = build_cfm_pairs(
-        daily_df,
-        config.context_days,
-        getattr(config, "intermediate_blocks", []),
-        getattr(config, "intermediate_representation", "sqrt"),
-    )
-
-    train_end_dt = datetime.date.fromisoformat(config.train_end)
-    val_end_dt = datetime.date.fromisoformat(config.val_end)
+    conditions_raw, _, dates_raw = load_raw_pairs_from_config(args.harxhar_path, config)
 
     # Create sampler
     sampler = CFMSampler(model, solver=args.solver, num_steps=args.num_steps)
@@ -113,7 +79,7 @@ def main():
         if split_name == "train":
             loader = DataLoader(loader.dataset, batch_size=config.batch_size, shuffle=False)
 
-        mask = _split_mask(dates_raw, split_name, train_end_dt, val_end_dt)
+        mask = get_split_mask(dates_raw, config, split_name)
         split_conditions_raw = conditions_raw[mask]
         split_dates = dates_raw[mask]
         split_daily_rv = split_conditions_raw[:, 0] ** 2  # undo sqrt

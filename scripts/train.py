@@ -8,11 +8,10 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import logging
 from pathlib import Path
 
+from cfm.cli import setup_logging
 from cfm.config import CFMConfig
-from cfm.logging import get_logger
 from cfm.training.trainer import CFMTrainer
 
 
@@ -69,8 +68,7 @@ def parse_args() -> argparse.Namespace:
 def main():
     args = parse_args()
 
-    level = logging.DEBUG if args.verbose else logging.WARNING if args.quiet else logging.INFO
-    logger = get_logger("cfm", level)
+    logger = setup_logging(args)
 
     config = CFMConfig(
         harxhar_path=args.harxhar_path,

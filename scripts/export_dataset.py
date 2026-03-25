@@ -7,13 +7,12 @@ Usage:
 """
 
 import argparse
-import logging
 from pathlib import Path
 
 import torch
 
+from cfm.cli import setup_logging
 from cfm.data.loading import build_cfm_pairs, compute_daily_rv, load_rv
-from cfm.logging import get_logger
 
 
 def main():
@@ -38,8 +37,7 @@ def main():
     parser.add_argument("--quiet", action="store_true", help="Only show warnings and errors")
     args = parser.parse_args()
 
-    level = logging.DEBUG if args.verbose else logging.WARNING if args.quiet else logging.INFO
-    logger = get_logger("cfm", level)
+    logger = setup_logging(args)
 
     logger.info("Loading RV from %s ...", args.harxhar_path)
     rv_df = load_rv(args.harxhar_path)

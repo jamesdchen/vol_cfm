@@ -8,17 +8,20 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import datetime
 import json
-import logging
 from pathlib import Path
 
 import numpy as np
-import torch
 import torch.nn.functional as F
 
-from cfm.data.dataset import build_dataloaders
-from cfm.data.loading import build_cfm_pairs, compute_daily_rv, load_rv
+from cfm.cli import (
+    build_dataloaders_from_config,
+    get_split_mask,
+    load_checkpoint_and_device,
+    load_raw_pairs_from_config,
+    save_figure,
+    setup_logging,
+)
 from cfm.evaluation.metrics import (
     acf_comparison,
     evaluate_all,
@@ -29,8 +32,6 @@ from cfm.evaluation.visualize import (
     plot_marginal_distributions,
     plot_sample_paths,
 )
-from cfm.logging import get_logger
-from cfm.model import load_model_from_checkpoint
 from cfm.model.sampler import CFMSampler
 
 
@@ -48,33 +49,21 @@ def parse_args() -> argparse.Namespace:
 def main():
     args = parse_args()
 
-    level = logging.DEBUG if args.verbose else logging.WARNING if args.quiet else logging.INFO
-    logger = get_logger("cfm", level)
+    logger = setup_logging(args)
 
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # Load checkpoint
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model, scaler_stats, config = load_model_from_checkpoint(args.checkpoint, device)
+    model, scaler_stats, config, device = load_checkpoint_and_device(args.checkpoint)
 
     # Build test set
-    train_loader, val_loader, test_loader, _ = build_dataloaders(
-        harxhar_path=args.harxhar_path,
-        context_days=config.context_days,
-        train_end=config.train_end,
-        val_end=config.val_end,
-        batch_size=config.batch_size,
-        seed=config.seed,
-    )
+    train_loader, val_loader, test_loader, _ = build_dataloaders_from_config(args.harxhar_path, config)
 
     # Get raw test data for metrics
-    rv_df = load_rv(args.harxhar_path)
-    daily_df = compute_daily_rv(rv_df)
-    conditions_raw, proportions_raw, dates_raw = build_cfm_pairs(daily_df, config.context_days)
+    conditions_raw, proportions_raw, dates_raw = load_raw_pairs_from_config(args.harxhar_path, config)
 
-    val_end_dt = datetime.date.fromisoformat(config.val_end)
-    test_mask = dates_raw > np.datetime64(val_end_dt)
+    test_mask = get_split_mask(dates_raw, config, "test")
     real_proportions = proportions_raw[test_mask]
     test_daily_rv = conditions_raw[test_mask, 0] ** 2  # undo sqrt
 
@@ -114,21 +103,17 @@ def main():
 
     # Generate visualizations
     fig1, _ = plot_sample_paths(real_subset, gen_proportions)
-    fig1.savefig(str(output_dir / "sample_paths.png"), dpi=150, bbox_inches="tight")
-    logger.info("Saved: %s", output_dir / "sample_paths.png")
+    save_figure(fig1, output_dir / "sample_paths.png", logger)
 
     fig2, _ = plot_diurnal_pattern(real_subset, gen_proportions)
-    fig2.savefig(str(output_dir / "diurnal_pattern.png"), dpi=150, bbox_inches="tight")
-    logger.info("Saved: %s", output_dir / "diurnal_pattern.png")
+    save_figure(fig2, output_dir / "diurnal_pattern.png", logger)
 
     fig3, _ = plot_marginal_distributions(real_subset, gen_proportions)
-    fig3.savefig(str(output_dir / "marginal_distributions.png"), dpi=150, bbox_inches="tight")
-    logger.info("Saved: %s", output_dir / "marginal_distributions.png")
+    save_figure(fig3, output_dir / "marginal_distributions.png", logger)
 
     acf_results = acf_comparison(real_subset, gen_proportions)
     fig4, _ = plot_acf(acf_results["real_acf"], acf_results["gen_acf"])
-    fig4.savefig(str(output_dir / "acf_comparison.png"), dpi=150, bbox_inches="tight")
-    logger.info("Saved: %s", output_dir / "acf_comparison.png")
+    save_figure(fig4, output_dir / "acf_comparison.png", logger)
 
     import matplotlib.pyplot as plt
 

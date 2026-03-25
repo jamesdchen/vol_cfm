@@ -8,6 +8,7 @@ from pathlib import Path
 import numpy as np
 import torch
 
+from cfm.cli import get_device
 from cfm.config import CFMConfig
 from cfm.data.dataset import build_dataloaders
 from cfm.logging import get_logger
@@ -35,7 +36,7 @@ class CFMTrainer:
         np.random.seed(config.seed)
 
         # Device
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.device = get_device()
 
         # Data
         self.train_loader, self.val_loader, self.test_loader, self.scaler_stats = build_dataloaders(
