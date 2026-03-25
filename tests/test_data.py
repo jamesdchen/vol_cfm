@@ -2,7 +2,6 @@
 
 import numpy as np
 import pandas as pd
-import pytest
 
 from cfm.data.loading import build_cfm_pairs
 from cfm.data.transforms import (

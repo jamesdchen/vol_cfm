@@ -9,15 +9,16 @@ from __future__ import annotations
 
 import argparse
 import datetime
+import logging
 
 import numpy as np
 import torch
 import torch.nn.functional as F
 
 from cfm.data.dataset import build_dataloaders
-from cfm.data.transforms import apply_scaler, denormalize_from_proportions
+from cfm.logging import get_logger
+from cfm.model import load_model_from_checkpoint
 from cfm.model.sampler import CFMSampler
-from cfm.model.vector_field import ConditionalVectorField
 
 
 def parse_args() -> argparse.Namespace:
@@ -29,29 +30,20 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--solver", type=str, default="dopri5")
     parser.add_argument("--num-steps", type=int, default=100)
     parser.add_argument("--split", type=str, default="test", choices=["train", "val", "test"])
+    parser.add_argument("--verbose", action="store_true", help="Enable debug logging")
+    parser.add_argument("--quiet", action="store_true", help="Only show warnings and errors")
     return parser.parse_args()
 
 
 def main():
     args = parse_args()
 
+    level = logging.DEBUG if args.verbose else logging.WARNING if args.quiet else logging.INFO
+    logger = get_logger("cfm", level)
+
     # Load checkpoint
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    ckpt = torch.load(args.checkpoint, map_location=device, weights_only=False)
-
-    model_state = ckpt["model_state_dict"]
-    scaler_stats = ckpt["scaler_stats"]
-    config = ckpt["config"]
-
-    # Reconstruct model
-    model = ConditionalVectorField(
-        output_dim=config.output_dim,
-        cond_dim=config.cond_dim,
-        hidden_dims=config.hidden_dims,
-        time_embed_dim=config.time_embed_dim,
-    ).to(device)
-    model.load_state_dict(model_state)
-    model.eval()
+    model, scaler_stats, config = load_model_from_checkpoint(args.checkpoint, device)
 
     # Build dataloaders to get the requested split
     train_loader, val_loader, test_loader, _ = build_dataloaders(
@@ -135,13 +127,13 @@ def main():
         args.output,
     )
 
-    print(f"Split:                {args.split}")
-    print(f"Conditioning days:    {len(split_dates)}")
-    print(f"Samples per day:      {args.num_samples_per_day}")
-    print(f"Total generated:      {len(generated_proportions)}")
-    print(f"Proportions shape:    {tuple(generated_proportions.shape)}")
-    print(f"Absolute shape:       {tuple(generated_absolute.shape)}")
-    print(f"Saved to:             {args.output}")
+    logger.info("Split:                %s", args.split)
+    logger.info("Conditioning days:    %d", len(split_dates))
+    logger.info("Samples per day:      %d", args.num_samples_per_day)
+    logger.info("Total generated:      %d", len(generated_proportions))
+    logger.info("Proportions shape:    %s", tuple(generated_proportions.shape))
+    logger.info("Absolute shape:       %s", tuple(generated_absolute.shape))
+    logger.info("Saved to:             %s", args.output)
 
 
 if __name__ == "__main__":

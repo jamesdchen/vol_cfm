@@ -1,8 +1,6 @@
 """Tests for cfm.model.flow_matching."""
 
 import torch
-import numpy as np
-import pytest
 
 from cfm.model.flow_matching import cfm_loss, ot_pair
 from cfm.model.vector_field import ConditionalVectorField

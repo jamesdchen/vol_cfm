@@ -5,10 +5,10 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
+from cfm.config import PERIODS_PER_DAY
 
 # 48 half-hour periods in a trading day: Sunday 18:30 -> Friday 17:00
 # Each bar represents 30 minutes; timestamps mark the bar's end.
-PERIODS_PER_DAY = 48
 BAR_FREQ = pd.Timedelta(minutes=30)
 
 # Market opens Sunday 18:00 CME (first bar ends 18:30) — but the convention

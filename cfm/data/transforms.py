@@ -37,6 +37,8 @@ def fit_scaler(conditions: np.ndarray) -> dict:
 
 def apply_scaler(conditions: np.ndarray, stats: dict) -> np.ndarray:
     """Standardize conditions using precomputed stats."""
+    if "mean" not in stats or "std" not in stats:
+        raise KeyError(f"stats must contain 'mean' and 'std' keys, got {list(stats.keys())}")
     return (conditions - stats["mean"]) / (stats["std"] + 1e-8)
 
 

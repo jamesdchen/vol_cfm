@@ -10,8 +10,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-START_DATE = "2005-01-01"
-PERIODS_PER_DAY = 48
+from cfm.config import PERIODS_PER_DAY, START_DATE
 
 
 def load_rv(path: str) -> pd.DataFrame:

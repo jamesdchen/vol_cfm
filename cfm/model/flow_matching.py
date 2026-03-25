@@ -55,6 +55,9 @@ def cfm_loss(
     Returns:
         Scalar MSE loss.
     """
+    assert x_1.ndim == 2 and cond.ndim == 2, (
+        f"Expected 2D tensors, got x_1={x_1.shape}, cond={cond.shape}"
+    )
     B, D = x_1.shape
     device = x_1.device
 

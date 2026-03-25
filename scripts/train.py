@@ -8,9 +8,11 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import logging
 from pathlib import Path
 
 from cfm.config import CFMConfig
+from cfm.logging import get_logger
 from cfm.training.trainer import CFMTrainer
 
 
@@ -31,12 +33,17 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--val-end", type=str, default="2022-12-31")
     parser.add_argument("--checkpoint-every", type=int, default=10)
     parser.add_argument("--sigma-min", type=float, default=1e-4)
+    parser.add_argument("--verbose", action="store_true", help="Enable debug logging")
+    parser.add_argument("--quiet", action="store_true", help="Only show warnings and errors")
 
     return parser.parse_args()
 
 
 def main():
     args = parse_args()
+
+    level = logging.DEBUG if args.verbose else logging.WARNING if args.quiet else logging.INFO
+    logger = get_logger("cfm", level)
 
     config = CFMConfig(
         harxhar_path=args.harxhar_path,
@@ -56,16 +63,15 @@ def main():
     )
 
     trainer = CFMTrainer(config)
-    print(f"Device: {trainer.device}")
-    print(f"Train batches: {len(trainer.train_loader)}")
-    print(f"Val batches:   {len(trainer.val_loader)}")
-    print(f"Model params:  {sum(p.numel() for p in trainer.model.parameters()):,}")
-    print()
+    logger.info("Device: %s", trainer.device)
+    logger.info("Train batches: %d", len(trainer.train_loader))
+    logger.info("Val batches:   %d", len(trainer.val_loader))
+    logger.info("Model params:  %s", f"{sum(p.numel() for p in trainer.model.parameters()):,}")
 
     trainer.fit()
 
     best_path = str(Path(config.checkpoint_dir) / "best.pt")
-    print(f"\nTraining complete. Best checkpoint: {best_path}")
+    logger.info("Training complete. Best checkpoint: %s", best_path)
 
 
 if __name__ == "__main__":

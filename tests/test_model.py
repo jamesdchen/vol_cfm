@@ -1,7 +1,6 @@
 """Tests for cfm.model.vector_field."""
 
 import torch
-import pytest
 
 from cfm.model.vector_field import ConditionalVectorField, SinusoidalTimeEmbedding
 

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import os
+import math
 from pathlib import Path
 
 import numpy as np
@@ -10,9 +10,12 @@ import torch
 
 from cfm.config import CFMConfig
 from cfm.data.dataset import build_dataloaders
+from cfm.logging import get_logger
 from cfm.model.flow_matching import cfm_loss
 from cfm.model.vector_field import ConditionalVectorField
 from cfm.training.scheduler import CosineWarmupScheduler
+
+logger = get_logger(__name__)
 
 
 class CFMTrainer:
@@ -120,28 +123,37 @@ class CFMTrainer:
         ckpt_dir = Path(self.config.checkpoint_dir)
         ckpt_dir.mkdir(parents=True, exist_ok=True)
 
-        for epoch in range(1, self.config.num_epochs + 1):
-            self.epoch = epoch
+        try:
+            for epoch in range(1, self.config.num_epochs + 1):
+                self.epoch = epoch
 
-            train_loss = self.train_epoch()
-            val_loss = self.validate()
-            lr = self.scheduler.get_lr()
+                train_loss = self.train_epoch()
 
-            print(
-                f"Epoch {epoch}/{self.config.num_epochs} | "
-                f"train_loss={train_loss:.6f} | "
-                f"val_loss={val_loss:.6f} | "
-                f"lr={lr:.2e}"
-            )
+                if math.isnan(train_loss):
+                    logger.error("NaN training loss at epoch %d, saving checkpoint and stopping", epoch)
+                    self.save_checkpoint(str(ckpt_dir / "nan_checkpoint.pt"))
+                    return
 
-            # Best model checkpoint
-            if val_loss < self.best_val_loss:
-                self.best_val_loss = val_loss
-                self.save_checkpoint(str(ckpt_dir / "best.pt"))
+                val_loss = self.validate()
+                lr = self.scheduler.get_lr()
 
-            # Periodic checkpoint
-            if epoch % self.config.checkpoint_every == 0:
-                self.save_checkpoint(str(ckpt_dir / f"epoch_{epoch}.pt"))
+                logger.info(
+                    "Epoch %d/%d | train_loss=%.6f | val_loss=%.6f | lr=%.2e",
+                    epoch, self.config.num_epochs, train_loss, val_loss, lr,
+                )
+
+                # Best model checkpoint
+                if val_loss < self.best_val_loss:
+                    self.best_val_loss = val_loss
+                    self.save_checkpoint(str(ckpt_dir / "best.pt"))
+
+                # Periodic checkpoint
+                if epoch % self.config.checkpoint_every == 0:
+                    self.save_checkpoint(str(ckpt_dir / f"epoch_{epoch}.pt"))
+        except KeyboardInterrupt:
+            logger.warning("Training interrupted at epoch %d, saving checkpoint", self.epoch)
+            self.save_checkpoint(str(ckpt_dir / "interrupted.pt"))
+            return
 
         # Final checkpoint
         self.save_checkpoint(str(ckpt_dir / "final.pt"))

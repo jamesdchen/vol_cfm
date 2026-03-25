@@ -7,12 +7,13 @@ Usage:
 """
 
 import argparse
+import logging
 from pathlib import Path
 
-import numpy as np
 import torch
 
 from cfm.data.loading import build_cfm_pairs, compute_daily_rv, load_rv
+from cfm.logging import get_logger
 
 
 def main():
@@ -33,33 +34,41 @@ def main():
         default=5,
         help="Number of lagged daily RV values in condition",
     )
+    parser.add_argument("--verbose", action="store_true", help="Enable debug logging")
+    parser.add_argument("--quiet", action="store_true", help="Only show warnings and errors")
     args = parser.parse_args()
 
-    print(f"Loading RV from {args.harxhar_path} ...")
+    level = logging.DEBUG if args.verbose else logging.WARNING if args.quiet else logging.INFO
+    logger = get_logger("cfm", level)
+
+    logger.info("Loading RV from %s ...", args.harxhar_path)
     rv_df = load_rv(args.harxhar_path)
-    print(f"  30-min bars: {len(rv_df):,}")
-    print(f"  Date range:  {rv_df['t'].min()} -> {rv_df['t'].max()}")
+    logger.info("  30-min bars: %s", f"{len(rv_df):,}")
+    logger.info("  Date range:  %s -> %s", rv_df["t"].min(), rv_df["t"].max())
 
-    print("Computing daily RV ...")
+    logger.info("Computing daily RV ...")
     daily_df = compute_daily_rv(rv_df)
-    print(f"  Trading days (48 bars each): {len(daily_df):,}")
+    logger.info("  Trading days (48 bars each): %s", f"{len(daily_df):,}")
 
-    print(f"Building CFM pairs (context_days={args.context_days}) ...")
+    logger.info("Building CFM pairs (context_days=%d) ...", args.context_days)
     conditions, proportions, dates = build_cfm_pairs(daily_df, args.context_days)
-    print(f"  Samples: {len(conditions):,}")
-    print(f"  Condition shape: {conditions.shape}")
-    print(f"  Proportion shape: {proportions.shape}")
-    print(f"  Date range: {dates[0]} -> {dates[-1]}")
+    logger.info("  Samples: %s", f"{len(conditions):,}")
+    logger.info("  Condition shape: %s", conditions.shape)
+    logger.info("  Proportion shape: %s", proportions.shape)
+    logger.info("  Date range: %s -> %s", dates[0], dates[-1])
 
     # Summary stats
-    print("\nSummary statistics:")
-    print(f"  Condition mean: {conditions.mean(axis=0)}")
-    print(f"  Condition std:  {conditions.std(axis=0)}")
-    print(f"  Proportion min: {proportions.min():.6f}")
-    print(f"  Proportion max: {proportions.max():.6f}")
-    print(f"  Proportion row sums (should be ~1): "
-          f"mean={proportions.sum(axis=1).mean():.6f}, "
-          f"std={proportions.sum(axis=1).std():.6f}")
+    logger.info("")
+    logger.info("Summary statistics:")
+    logger.info("  Condition mean: %s", conditions.mean(axis=0))
+    logger.info("  Condition std:  %s", conditions.std(axis=0))
+    logger.info("  Proportion min: %.6f", proportions.min())
+    logger.info("  Proportion max: %.6f", proportions.max())
+    logger.info(
+        "  Proportion row sums (should be ~1): mean=%.6f, std=%.6f",
+        proportions.sum(axis=1).mean(),
+        proportions.sum(axis=1).std(),
+    )
 
     # Save
     output_path = Path(args.output)
@@ -74,7 +83,7 @@ def main():
         },
         output_path,
     )
-    print(f"\nSaved to {output_path}")
+    logger.info("Saved to %s", output_path)
 
 
 if __name__ == "__main__":

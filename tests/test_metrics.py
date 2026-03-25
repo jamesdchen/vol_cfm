@@ -1,7 +1,6 @@
 """Tests for cfm.evaluation.metrics."""
 
 import numpy as np
-import pytest
 
 from cfm.evaluation.metrics import (
     daily_consistency_error,
