@@ -46,6 +46,9 @@ class CFMConfig:
     cond_dim: int = field(init=False)
     sigma_min: float = 1e-4
 
+    # Bridge interpolation (coarse-to-fine)
+    bridge_interpolation: bool = False
+
     def __post_init__(self) -> None:
         # Validate intermediate block sizes
         for bs in self.intermediate_blocks:
@@ -54,6 +57,10 @@ class CFMConfig:
                     f"Block size {bs} does not evenly divide {PERIODS_PER_DAY}. "
                     f"Valid sizes: 1, 2, 3, 4, 6, 8, 12, 16, 24, 48."
                 )
+        if self.bridge_interpolation and not self.intermediate_blocks:
+            raise ValueError(
+                "bridge_interpolation=True requires at least one entry in intermediate_blocks."
+            )
         if self.intermediate_representation not in ("sqrt", "proportion", "both"):
             raise ValueError(
                 f"Invalid intermediate_representation: {self.intermediate_representation!r}. "

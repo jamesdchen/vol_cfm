@@ -33,6 +33,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--checkpoint-every", type=int, default=10)
     parser.add_argument("--sigma-min", type=float, default=1e-4)
     parser.add_argument(
+        "--bridge-interpolation",
+        action="store_true",
+        help="Enable coarse-to-fine bridge interpolation using intermediate_blocks as waypoints.",
+    )
+    parser.add_argument(
         "--intermediate-blocks",
         type=int,
         nargs="*",
@@ -90,6 +95,7 @@ def main():
         train_source=args.train_source,
         val_source=args.val_source,
         test_source=args.test_source,
+        bridge_interpolation=args.bridge_interpolation,
         intraday_summary_features=not args.no_intraday_summary,
         num_workers=args.num_workers,
         pin_memory=not args.no_pin_memory,
