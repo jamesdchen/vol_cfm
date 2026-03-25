@@ -83,7 +83,7 @@ def compute_daily_rv(df: pd.DataFrame) -> pd.DataFrame:
         df.groupby("date")
         .agg(
             daily_rv=("RV", "sum"),
-            intraday_48=("RV", lambda x: np.array(x.values, dtype=np.float64)),
+            intraday_48=("RV", list),
             count=("RV", "size"),
         )
         .reset_index()
@@ -91,6 +91,9 @@ def compute_daily_rv(df: pd.DataFrame) -> pd.DataFrame:
 
     # Keep only days with exactly 48 bars
     daily = daily[daily["count"] == PERIODS_PER_DAY].drop(columns="count").reset_index(drop=True)
+    daily["intraday_48"] = daily["intraday_48"].apply(
+        lambda x: np.array(x, dtype=np.float64)
+    )
 
     return daily
 
