@@ -48,6 +48,15 @@ class CFMTrainer:
                 seed=config.seed,
                 intermediate_blocks=config.intermediate_blocks,
                 intermediate_representation=config.intermediate_representation,
+                intraday_summary_features=config.intraday_summary_features,
+                train_source=config.train_source,
+                val_source=config.val_source,
+                test_source=config.test_source,
+                source_columns=config.source_columns,
+                num_workers=config.num_workers,
+                pin_memory=config.pin_memory,
+                persistent_workers=config.persistent_workers,
+                prefetch_factor=config.prefetch_factor,
             )
         )
 

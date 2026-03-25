@@ -13,29 +13,23 @@ import pandas as pd
 from cfm.config import PERIODS_PER_DAY, START_DATE
 
 
-def load_rv(path: str) -> pd.DataFrame:
-    """Load and merge all parquet files, return clean 30-min RV series.
+def _clean_30min_series(df: pd.DataFrame) -> pd.DataFrame:
+    """Apply shared cleanup to a 30-min RV series.
+
+    Builds a full 30-min grid from START_DATE to data end, drops weekends,
+    forward-fills gaps, and removes remaining NaNs.
 
     Parameters
     ----------
-    path : str
-        Directory containing the 6 harxhar parquet files.
+    df : pd.DataFrame
+        Must have columns [t, RV] with ``t`` as datetime.
 
     Returns
     -------
     pd.DataFrame
-        Columns [t, RV], 30-min frequency, weekends dropped, forward-filled.
+        Cleaned DataFrame with columns [t, RV].
     """
-    parquet_files = sorted(glob.glob(str(Path(path) / "*.parquet")))
-    if not parquet_files:
-        raise FileNotFoundError(f"No parquet files found in {path}")
-
-    df = pd.read_parquet(parquet_files[0])
-    for f in parquet_files[1:]:
-        right = pd.read_parquet(f)
-        df = pd.merge(df, right, on="endbartime", how="outer")
-
-    df = df.rename(columns={"endbartime": "t", "sumret2": "RV"})
+    df = df.copy()
     df["t"] = pd.to_datetime(df["t"])
     df = df.sort_values("t").drop_duplicates(subset="t", keep="last").reset_index(drop=True)
 
@@ -61,6 +55,56 @@ def load_rv(path: str) -> pd.DataFrame:
     df = df.dropna(subset=["RV"]).reset_index(drop=True)
 
     return df[["t", "RV"]]
+
+
+def load_rv(path: str) -> pd.DataFrame:
+    """Load and merge all parquet files, return clean 30-min RV series.
+
+    Parameters
+    ----------
+    path : str
+        Directory containing the 6 harxhar parquet files.
+
+    Returns
+    -------
+    pd.DataFrame
+        Columns [t, RV], 30-min frequency, weekends dropped, forward-filled.
+    """
+    parquet_files = sorted(glob.glob(str(Path(path) / "*.parquet")))
+    if not parquet_files:
+        raise FileNotFoundError(f"No parquet files found in {path}")
+
+    df = pd.read_parquet(parquet_files[0])
+    for f in parquet_files[1:]:
+        right = pd.read_parquet(f)
+        df = pd.merge(df, right, on="endbartime", how="outer")
+
+    df = df.rename(columns={"endbartime": "t", "sumret2": "RV"})
+
+    return _clean_30min_series(df)
+
+
+def load_rv_source(path: str, parquet_file: str, rv_column: str) -> pd.DataFrame:
+    """Load a single parquet file and return a clean 30-min RV series.
+
+    Parameters
+    ----------
+    path : str
+        Directory containing the parquet file.
+    parquet_file : str
+        Filename of the parquet file to read.
+    rv_column : str
+        Column name in the parquet file to use as RV.
+
+    Returns
+    -------
+    pd.DataFrame
+        Columns [t, RV], 30-min frequency, weekends dropped, forward-filled.
+    """
+    df = pd.read_parquet(Path(path) / parquet_file)
+    df = df.rename(columns={"endbartime": "t", rv_column: "RV"})
+
+    return _clean_30min_series(df)
 
 
 def compute_daily_rv(df: pd.DataFrame) -> pd.DataFrame:
@@ -116,11 +160,33 @@ def compute_block_rv(intraday_48: np.ndarray, block_size: int) -> np.ndarray:
     return intraday_48.reshape(n_blocks, block_size).sum(axis=1)
 
 
+def compute_intraday_summary(intraday_48: np.ndarray) -> np.ndarray:
+    """Compute summary statistics from 48 intraday RV bars.
+
+    Parameters
+    ----------
+    intraday_48 : np.ndarray, shape (48,)
+        Individual 30-min RV bars for one day.
+
+    Returns
+    -------
+    np.ndarray, shape (4,)
+        ``[sqrt(max), sqrt(min), sqrt(first_bar), sqrt(last_bar)]``
+    """
+    return np.array([
+        np.sqrt(intraday_48.max()),
+        np.sqrt(intraday_48.min()),
+        np.sqrt(intraday_48[0]),
+        np.sqrt(intraday_48[-1]),
+    ])
+
+
 def build_cfm_pairs(
     daily_df: pd.DataFrame,
     context_days: int = 5,
     intermediate_blocks: list[int] | None = None,
     intermediate_representation: str = "sqrt",
+    intraday_summary_features: bool = False,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Build (condition, target) pairs for conditional flow matching.
 
@@ -135,6 +201,8 @@ def build_cfm_pairs(
         E.g., [12] gives 4 quarter-day (6h) blocks per lag day.
     intermediate_representation : str
         How to encode intermediate RV: "sqrt", "proportion", or "both".
+    intraday_summary_features : bool
+        If True, append ``compute_intraday_summary`` for each lagged day.
 
     Returns
     -------
@@ -159,6 +227,10 @@ def build_cfm_pairs(
     dates_list = []
 
     for i in range(context_days, len(daily_df)):
+        # Skip days with zero daily RV (can't compute proportions)
+        if daily_rv[i] == 0:
+            continue
+
         # Daily sqrt(RV): [today, t-1, ..., t-context_days]
         cond_parts = [sqrt_rv[i - context_days : i + 1][::-1].copy()]
 
@@ -170,6 +242,9 @@ def build_cfm_pairs(
                     cond_parts.append(np.sqrt(block_rv))
                 if intermediate_representation in ("proportion", "both"):
                     cond_parts.append(block_rv / daily_rv[i - j])
+
+            if intraday_summary_features:
+                cond_parts.append(compute_intraday_summary(intraday[i - j]))
 
         prop = intraday[i] / daily_rv[i]
 

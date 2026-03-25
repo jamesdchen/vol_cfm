@@ -2,9 +2,16 @@
 
 import numpy as np
 import pandas as pd
+import pytest
 
 from cfm.config import CFMConfig
-from cfm.data.loading import build_cfm_pairs, compute_block_rv
+from cfm.data.loading import (
+    build_cfm_pairs,
+    compute_block_rv,
+    compute_intraday_summary,
+    load_rv_source,
+)
+from cfm.data.dataset import build_dataloaders
 from cfm.data.transforms import (
     apply_scaler,
     denormalize_from_proportions,
@@ -65,7 +72,9 @@ def test_build_cfm_pairs_shapes():
         }
     )
 
-    conditions, proportions, dates_out = build_cfm_pairs(daily_df, context_days)
+    conditions, proportions, dates_out = build_cfm_pairs(
+        daily_df, context_days, intraday_summary_features=False,
+    )
 
     expected_n = n_days - context_days
     assert conditions.shape == (expected_n, context_days + 1)
@@ -105,6 +114,7 @@ def test_build_cfm_pairs_with_intermediate_blocks():
     context_days = 5
     conditions, proportions, dates = build_cfm_pairs(
         daily_df, context_days, intermediate_blocks=[12], intermediate_representation="sqrt",
+        intraday_summary_features=False,
     )
     expected_n = 10 - context_days
     # 6 daily + 4 blocks * 5 lags = 26
@@ -118,6 +128,7 @@ def test_build_cfm_pairs_multiple_blocks():
     daily_df = _make_daily_df(10)
     conditions, _, _ = build_cfm_pairs(
         daily_df, 5, intermediate_blocks=[6, 12], intermediate_representation="sqrt",
+        intraday_summary_features=False,
     )
     # 6 daily + (8 + 4) blocks * 5 lags = 66
     assert conditions.shape[1] == 66
@@ -127,6 +138,7 @@ def test_build_cfm_pairs_proportion_representation():
     daily_df = _make_daily_df(10)
     conditions, _, _ = build_cfm_pairs(
         daily_df, 5, intermediate_blocks=[12], intermediate_representation="proportion",
+        intraday_summary_features=False,
     )
     assert conditions.shape[1] == 26
     # Proportion features for each lag should sum to ~1
@@ -140,6 +152,7 @@ def test_build_cfm_pairs_both_representation():
     daily_df = _make_daily_df(10)
     conditions, _, _ = build_cfm_pairs(
         daily_df, 5, intermediate_blocks=[12], intermediate_representation="both",
+        intraday_summary_features=False,
     )
     # 6 daily + 4 blocks * 2 (sqrt+prop) * 5 lags = 46
     assert conditions.shape[1] == 46
@@ -147,24 +160,36 @@ def test_build_cfm_pairs_both_representation():
 
 def test_build_cfm_pairs_backward_compatible():
     daily_df = _make_daily_df(10)
-    cond_baseline, prop_baseline, dates_baseline = build_cfm_pairs(daily_df, 5)
+    cond_baseline, prop_baseline, dates_baseline = build_cfm_pairs(
+        daily_df, 5, intraday_summary_features=False,
+    )
     cond_empty, prop_empty, dates_empty = build_cfm_pairs(
-        daily_df, 5, intermediate_blocks=[],
+        daily_df, 5, intermediate_blocks=[], intraday_summary_features=False,
     )
     np.testing.assert_array_equal(cond_baseline, cond_empty)
     np.testing.assert_array_equal(prop_baseline, prop_empty)
 
 
 def test_cond_dim_computation():
+    # Default has intraday_summary_features=True, so +20
     cfg = CFMConfig(intermediate_blocks=[12])
-    assert cfg.cond_dim == 26
+    # 6 + 4*5 + 4*5 = 6 + 20 + 20 = 46
+    assert cfg.cond_dim == 46
 
     cfg2 = CFMConfig(intermediate_blocks=[])
-    assert cfg2.cond_dim == 6
+    # 6 + 0 + 20 = 26
+    assert cfg2.cond_dim == 26
 
     cfg3 = CFMConfig(intermediate_blocks=[6, 12], intermediate_representation="both")
-    # 6 + (8+4) * 2 * 5 = 126
-    assert cfg3.cond_dim == 126
+    # 6 + (8+4)*2*5 + 20 = 6 + 120 + 20 = 146
+    assert cfg3.cond_dim == 146
+
+    # Backward-compat: no summary features
+    cfg4 = CFMConfig(intermediate_blocks=[12], intraday_summary_features=False)
+    assert cfg4.cond_dim == 26
+
+    cfg5 = CFMConfig(intermediate_blocks=[], intraday_summary_features=False)
+    assert cfg5.cond_dim == 6
 
 
 def test_cond_dim_invalid_block_raises():
@@ -173,3 +198,100 @@ def test_cond_dim_invalid_block_raises():
         assert False, "Should have raised ValueError"
     except ValueError:
         pass
+
+
+# ---------------------------------------------------------------------------
+# New tests for load_rv_source, compute_intraday_summary, summary features,
+# and multi-source dataloaders
+# ---------------------------------------------------------------------------
+
+HARXHAR_PATH = "data/all30min"
+
+_SOURCE_PARAMS = [
+    ("core_stats.parquet", "sumret2"),
+    ("vwstock_stats.parquet", "sumret2_vwstock"),
+    ("ewstock_stats.parquet", "sumret2_ewstock"),
+]
+
+
+@pytest.mark.parametrize("parquet_file,rv_column", _SOURCE_PARAMS)
+def test_load_rv_source(parquet_file, rv_column):
+    """load_rv_source returns a [t, RV] DataFrame with positive values."""
+    df = load_rv_source(HARXHAR_PATH, parquet_file, rv_column)
+    assert list(df.columns) == ["t", "RV"]
+    assert len(df) > 0
+    assert pd.api.types.is_datetime64_any_dtype(df["t"])
+    assert (df["RV"] >= 0).all()
+
+
+def test_compute_intraday_summary():
+    """Known 48-element array -> [sqrt(max), sqrt(min), sqrt(first), sqrt(last)]."""
+    intraday = np.arange(1.0, 49.0)  # 1..48
+    result = compute_intraday_summary(intraday)
+
+    assert result.shape == (4,)
+    np.testing.assert_allclose(result[0], np.sqrt(48.0))  # max
+    np.testing.assert_allclose(result[1], np.sqrt(1.0))   # min
+    np.testing.assert_allclose(result[2], np.sqrt(1.0))   # first
+    np.testing.assert_allclose(result[3], np.sqrt(48.0))  # last
+
+
+def test_build_cfm_pairs_with_summary():
+    """With intraday_summary_features=True, conditions gain 4*context_days cols."""
+    daily_df = _make_daily_df(10)
+    context_days = 5
+
+    cond_no, _, _ = build_cfm_pairs(
+        daily_df, context_days, intraday_summary_features=False,
+    )
+    cond_yes, _, _ = build_cfm_pairs(
+        daily_df, context_days, intraday_summary_features=True,
+    )
+
+    expected_n = 10 - context_days
+    # Without summary: context_days+1 = 6
+    assert cond_no.shape == (expected_n, 6)
+    # With summary: 6 + 4*5 = 26
+    assert cond_yes.shape == (expected_n, 26)
+    # First 6 columns should be identical
+    np.testing.assert_array_equal(cond_no, cond_yes[:, :6])
+    # Summary features should be non-negative (sqrt of positive values)
+    assert (cond_yes[:, 6:] >= 0).all()
+
+
+def test_build_cfm_pairs_summary_plus_blocks():
+    """Summary features stack correctly with intermediate block features."""
+    daily_df = _make_daily_df(10)
+    context_days = 5
+
+    cond, _, _ = build_cfm_pairs(
+        daily_df, context_days,
+        intermediate_blocks=[12],
+        intermediate_representation="sqrt",
+        intraday_summary_features=True,
+    )
+    # 6 daily + 4 blocks * 5 lags + 4 summary * 5 lags = 6 + 20 + 20 = 46
+    assert cond.shape[1] == 46
+
+
+def test_multisource_dataloaders():
+    """build_dataloaders with multi-source params returns three non-empty loaders."""
+    train_loader, val_loader, test_loader, scaler_stats = build_dataloaders(
+        harxhar_path=HARXHAR_PATH,
+        context_days=5,
+        train_end="2020-12-31",
+        val_end="2022-12-31",
+        batch_size=64,
+        intraday_summary_features=True,
+        num_workers=0,
+    )
+
+    assert len(train_loader.dataset) > 0
+    assert len(val_loader.dataset) > 0
+    assert len(test_loader.dataset) > 0
+
+    # Verify condition dimension matches config
+    cfg = CFMConfig(intraday_summary_features=True)
+    x1, cond = next(iter(train_loader))
+    assert cond.shape[1] == cfg.cond_dim
+    assert x1.shape[1] == 48
