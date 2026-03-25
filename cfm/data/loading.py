@@ -54,7 +54,7 @@ def _clean_30min_series(df: pd.DataFrame) -> pd.DataFrame:
     df["RV"] = df["RV"].ffill()
     df = df.dropna(subset=["RV"]).reset_index(drop=True)
 
-    return df[["t", "RV"]]
+    return df[["t", "RV"]]  # type: ignore[no-any-return]
 
 
 def load_rv(path: str) -> pd.DataFrame:
@@ -135,11 +135,9 @@ def compute_daily_rv(df: pd.DataFrame) -> pd.DataFrame:
 
     # Keep only days with exactly 48 bars
     daily = daily[daily["count"] == PERIODS_PER_DAY].drop(columns="count").reset_index(drop=True)
-    daily["intraday_48"] = daily["intraday_48"].apply(
-        lambda x: np.array(x, dtype=np.float64)
-    )
+    daily["intraday_48"] = daily["intraday_48"].apply(lambda x: np.array(x, dtype=np.float64))
 
-    return daily
+    return daily  # type: ignore[no-any-return]
 
 
 def compute_block_rv(intraday_48: np.ndarray, block_size: int) -> np.ndarray:
@@ -157,7 +155,7 @@ def compute_block_rv(intraday_48: np.ndarray, block_size: int) -> np.ndarray:
     np.ndarray, shape (48 // block_size,)
     """
     n_blocks = PERIODS_PER_DAY // block_size
-    return intraday_48.reshape(n_blocks, block_size).sum(axis=1)
+    return intraday_48.reshape(n_blocks, block_size).sum(axis=1)  # type: ignore[no-any-return]
 
 
 def compute_intraday_summary(intraday_48: np.ndarray) -> np.ndarray:
@@ -173,12 +171,14 @@ def compute_intraday_summary(intraday_48: np.ndarray) -> np.ndarray:
     np.ndarray, shape (4,)
         ``[sqrt(max), sqrt(min), sqrt(first_bar), sqrt(last_bar)]``
     """
-    return np.array([
-        np.sqrt(intraday_48.max()),
-        np.sqrt(intraday_48.min()),
-        np.sqrt(intraday_48[0]),
-        np.sqrt(intraday_48[-1]),
-    ])
+    return np.array(
+        [
+            np.sqrt(intraday_48.max()),
+            np.sqrt(intraday_48.min()),
+            np.sqrt(intraday_48[0]),
+            np.sqrt(intraday_48[-1]),
+        ]
+    )
 
 
 def build_cfm_pairs(
@@ -217,7 +217,7 @@ def build_cfm_pairs(
         intermediate_blocks = []
 
     daily_rv = daily_df["daily_rv"].values
-    intraday = np.stack(daily_df["intraday_48"].values)
+    intraday = np.stack(list(daily_df["intraday_48"].values))
     dates_arr = daily_df["date"].values
 
     sqrt_rv = np.sqrt(daily_rv)

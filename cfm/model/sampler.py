@@ -78,9 +78,7 @@ class CFMSampler:
         return x_1
 
     @torch.no_grad()
-    def sample_consistent(
-        self, daily_rv: Tensor, context: Tensor
-    ) -> Tensor:
+    def sample_consistent(self, daily_rv: Tensor, context: Tensor) -> Tensor:
         """Generate intraday RV that sums to the observed daily RV.
 
         Builds the conditioning vector, samples raw network output, then

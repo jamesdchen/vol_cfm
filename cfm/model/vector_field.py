@@ -30,18 +30,12 @@ class SinusoidalTimeEmbedding(nn.Module):
         """
         device = t.device
         half_dim = self.dim // 2
-        freqs = torch.exp(
-            -math.log(10000.0)
-            * torch.arange(half_dim, device=device, dtype=torch.float32)
-            / half_dim
-        )
+        freqs = torch.exp(-math.log(10000.0) * torch.arange(half_dim, device=device, dtype=torch.float32) / half_dim)
         args = t[:, None].float() * freqs[None, :]
         embedding = torch.cat([torch.sin(args), torch.cos(args)], dim=-1)
         # If dim is odd, pad with a zero column
         if self.dim % 2 == 1:
-            embedding = torch.cat(
-                [embedding, torch.zeros_like(embedding[:, :1])], dim=-1
-            )
+            embedding = torch.cat([embedding, torch.zeros_like(embedding[:, :1])], dim=-1)
         return embedding
 
 
@@ -78,12 +72,14 @@ class ConditionalVectorField(nn.Module):
         layers: list[nn.Module] = []
         in_features = input_dim
         for h in hidden_dims:
-            layers.extend([
-                nn.Linear(in_features, h),
-                nn.LayerNorm(h),
-                nn.SiLU(),
-                nn.Dropout(dropout),
-            ])
+            layers.extend(
+                [
+                    nn.Linear(in_features, h),
+                    nn.LayerNorm(h),
+                    nn.SiLU(),
+                    nn.Dropout(dropout),
+                ]
+            )
             in_features = h
 
         self.net = nn.Sequential(*layers)

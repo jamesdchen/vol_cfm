@@ -11,6 +11,7 @@ START_DATE = "2005-01-01"
 FRIDAY_CLOSE = "20:00"
 SUNDAY_OPEN = "18:30"
 
+
 @dataclass
 class CFMConfig:
     # Data
@@ -28,11 +29,13 @@ class CFMConfig:
     train_source: str = "vwstock_stats.parquet"
     val_source: str = "ewstock_stats.parquet"
     test_source: str = "core_stats.parquet"
-    source_columns: dict[str, str] = field(default_factory=lambda: {
-        "vwstock_stats.parquet": "sumret2_vwstock",
-        "ewstock_stats.parquet": "sumret2_ewstock",
-        "core_stats.parquet": "sumret2",
-    })
+    source_columns: dict[str, str] = field(
+        default_factory=lambda: {
+            "vwstock_stats.parquet": "sumret2_vwstock",
+            "ewstock_stats.parquet": "sumret2_ewstock",
+            "core_stats.parquet": "sumret2",
+        }
+    )
 
     # Intraday summary features
     intraday_summary_features: bool = True
@@ -60,6 +63,7 @@ class CFMConfig:
         # Auto-detect num_workers
         if self.num_workers == 0:
             import os
+
             self.num_workers = min(os.cpu_count() or 4, 8)
 
         # Compute cond_dim: daily features + intermediate features from lagged days

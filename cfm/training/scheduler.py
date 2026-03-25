@@ -35,15 +35,15 @@ class CosineWarmupScheduler:
 
     def _compute_lr(self, step: int) -> float:
         if step < self.warmup_steps:
-            return self.base_lr * step / self.warmup_steps
+            return float(self.base_lr * step / self.warmup_steps)
         # Cosine decay phase
         decay_steps = self.total_steps - self.warmup_steps
         if decay_steps <= 0:
-            return self.base_lr
+            return float(self.base_lr)
         progress = (step - self.warmup_steps) / decay_steps
         progress = min(progress, 1.0)
-        return self.base_lr * 0.5 * (1.0 + math.cos(math.pi * progress))
+        return float(self.base_lr * 0.5 * (1.0 + math.cos(math.pi * progress)))
 
     def get_lr(self) -> float:
         """Current learning rate."""
-        return self.optimizer.param_groups[0]["lr"]
+        return float(self.optimizer.param_groups[0]["lr"])

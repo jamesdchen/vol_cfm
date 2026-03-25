@@ -5,13 +5,13 @@ import pandas as pd
 import pytest
 
 from cfm.config import CFMConfig
+from cfm.data.dataset import build_dataloaders
 from cfm.data.loading import (
     build_cfm_pairs,
     compute_block_rv,
     compute_intraday_summary,
     load_rv_source,
 )
-from cfm.data.dataset import build_dataloaders
 from cfm.data.transforms import (
     apply_scaler,
     denormalize_from_proportions,
@@ -73,7 +73,9 @@ def test_build_cfm_pairs_shapes():
     )
 
     conditions, proportions, dates_out = build_cfm_pairs(
-        daily_df, context_days, intraday_summary_features=False,
+        daily_df,
+        context_days,
+        intraday_summary_features=False,
     )
 
     expected_n = n_days - context_days
@@ -113,7 +115,10 @@ def test_build_cfm_pairs_with_intermediate_blocks():
     daily_df = _make_daily_df(10)
     context_days = 5
     conditions, proportions, dates = build_cfm_pairs(
-        daily_df, context_days, intermediate_blocks=[12], intermediate_representation="sqrt",
+        daily_df,
+        context_days,
+        intermediate_blocks=[12],
+        intermediate_representation="sqrt",
         intraday_summary_features=False,
     )
     expected_n = 10 - context_days
@@ -127,7 +132,10 @@ def test_build_cfm_pairs_with_intermediate_blocks():
 def test_build_cfm_pairs_multiple_blocks():
     daily_df = _make_daily_df(10)
     conditions, _, _ = build_cfm_pairs(
-        daily_df, 5, intermediate_blocks=[6, 12], intermediate_representation="sqrt",
+        daily_df,
+        5,
+        intermediate_blocks=[6, 12],
+        intermediate_representation="sqrt",
         intraday_summary_features=False,
     )
     # 6 daily + (8 + 4) blocks * 5 lags = 66
@@ -137,7 +145,10 @@ def test_build_cfm_pairs_multiple_blocks():
 def test_build_cfm_pairs_proportion_representation():
     daily_df = _make_daily_df(10)
     conditions, _, _ = build_cfm_pairs(
-        daily_df, 5, intermediate_blocks=[12], intermediate_representation="proportion",
+        daily_df,
+        5,
+        intermediate_blocks=[12],
+        intermediate_representation="proportion",
         intraday_summary_features=False,
     )
     assert conditions.shape[1] == 26
@@ -151,7 +162,10 @@ def test_build_cfm_pairs_proportion_representation():
 def test_build_cfm_pairs_both_representation():
     daily_df = _make_daily_df(10)
     conditions, _, _ = build_cfm_pairs(
-        daily_df, 5, intermediate_blocks=[12], intermediate_representation="both",
+        daily_df,
+        5,
+        intermediate_blocks=[12],
+        intermediate_representation="both",
         intraday_summary_features=False,
     )
     # 6 daily + 4 blocks * 2 (sqrt+prop) * 5 lags = 46
@@ -161,10 +175,15 @@ def test_build_cfm_pairs_both_representation():
 def test_build_cfm_pairs_backward_compatible():
     daily_df = _make_daily_df(10)
     cond_baseline, prop_baseline, dates_baseline = build_cfm_pairs(
-        daily_df, 5, intraday_summary_features=False,
+        daily_df,
+        5,
+        intraday_summary_features=False,
     )
     cond_empty, prop_empty, dates_empty = build_cfm_pairs(
-        daily_df, 5, intermediate_blocks=[], intraday_summary_features=False,
+        daily_df,
+        5,
+        intermediate_blocks=[],
+        intraday_summary_features=False,
     )
     np.testing.assert_array_equal(cond_baseline, cond_empty)
     np.testing.assert_array_equal(prop_baseline, prop_empty)
@@ -195,7 +214,7 @@ def test_cond_dim_computation():
 def test_cond_dim_invalid_block_raises():
     try:
         CFMConfig(intermediate_blocks=[7])
-        assert False, "Should have raised ValueError"
+        raise AssertionError("Should have raised ValueError")
     except ValueError:
         pass
 
@@ -231,8 +250,8 @@ def test_compute_intraday_summary():
 
     assert result.shape == (4,)
     np.testing.assert_allclose(result[0], np.sqrt(48.0))  # max
-    np.testing.assert_allclose(result[1], np.sqrt(1.0))   # min
-    np.testing.assert_allclose(result[2], np.sqrt(1.0))   # first
+    np.testing.assert_allclose(result[1], np.sqrt(1.0))  # min
+    np.testing.assert_allclose(result[2], np.sqrt(1.0))  # first
     np.testing.assert_allclose(result[3], np.sqrt(48.0))  # last
 
 
@@ -242,10 +261,14 @@ def test_build_cfm_pairs_with_summary():
     context_days = 5
 
     cond_no, _, _ = build_cfm_pairs(
-        daily_df, context_days, intraday_summary_features=False,
+        daily_df,
+        context_days,
+        intraday_summary_features=False,
     )
     cond_yes, _, _ = build_cfm_pairs(
-        daily_df, context_days, intraday_summary_features=True,
+        daily_df,
+        context_days,
+        intraday_summary_features=True,
     )
 
     expected_n = 10 - context_days
@@ -265,7 +288,8 @@ def test_build_cfm_pairs_summary_plus_blocks():
     context_days = 5
 
     cond, _, _ = build_cfm_pairs(
-        daily_df, context_days,
+        daily_df,
+        context_days,
         intermediate_blocks=[12],
         intermediate_representation="sqrt",
         intraday_summary_features=True,

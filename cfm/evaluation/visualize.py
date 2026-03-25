@@ -38,12 +38,18 @@ def plot_sample_paths(
 
     for i, ri in enumerate(idx_real):
         ax.plot(
-            x, real[ri], color="tab:blue", alpha=0.5,
+            x,
+            real[ri],
+            color="tab:blue",
+            alpha=0.5,
             label="Real" if i == 0 else None,
         )
     for i, gi in enumerate(idx_gen):
         ax.plot(
-            x, generated[gi], color="tab:red", alpha=0.5,
+            x,
+            generated[gi],
+            color="tab:red",
+            alpha=0.5,
             label="Generated" if i == 0 else None,
         )
 
@@ -55,9 +61,7 @@ def plot_sample_paths(
     return fig, ax
 
 
-def plot_diurnal_pattern(
-    real: np.ndarray, generated: np.ndarray
-) -> tuple[Figure, Axes]:
+def plot_diurnal_pattern(real: np.ndarray, generated: np.ndarray) -> tuple[Figure, Axes]:
     """Plot mean +/- 1 std diurnal pattern for real and generated data.
 
     Parameters
@@ -77,13 +81,19 @@ def plot_diurnal_pattern(
     fig, ax = plt.subplots(figsize=(10, 4))
     ax.plot(x, real_mean, color="tab:blue", label="Real")
     ax.fill_between(
-        x, real_mean - real_std, real_mean + real_std,
-        color="tab:blue", alpha=0.2,
+        x,
+        real_mean - real_std,
+        real_mean + real_std,
+        color="tab:blue",
+        alpha=0.2,
     )
     ax.plot(x, gen_mean, color="tab:red", label="Generated")
     ax.fill_between(
-        x, gen_mean - gen_std, gen_mean + gen_std,
-        color="tab:red", alpha=0.2,
+        x,
+        gen_mean - gen_std,
+        gen_mean + gen_std,
+        color="tab:red",
+        alpha=0.2,
     )
 
     ax.set_xlabel("Period")
@@ -123,10 +133,8 @@ def plot_marginal_distributions(
 
     for i, p in enumerate(periods):
         ax = axes_flat[i]
-        ax.hist(real[:, p], bins=30, alpha=0.5, color="tab:blue",
-                label="Real", density=True)
-        ax.hist(generated[:, p], bins=30, alpha=0.5, color="tab:red",
-                label="Generated", density=True)
+        ax.hist(real[:, p], bins=30, alpha=0.5, color="tab:blue", label="Real", density=True)
+        ax.hist(generated[:, p], bins=30, alpha=0.5, color="tab:red", label="Generated", density=True)
         ax.set_title(f"Period {p}")
         ax.legend(fontsize="small")
 
@@ -139,9 +147,7 @@ def plot_marginal_distributions(
     return fig, axes
 
 
-def plot_acf(
-    real_acf: np.ndarray, gen_acf: np.ndarray
-) -> tuple[Figure, Axes]:
+def plot_acf(real_acf: np.ndarray, gen_acf: np.ndarray) -> tuple[Figure, Axes]:
     """Side-by-side bar chart of ACF at each lag.
 
     Parameters

@@ -6,7 +6,7 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader, Dataset
 
-from cfm.data.loading import build_cfm_pairs, compute_daily_rv, load_rv, load_rv_source
+from cfm.data.loading import build_cfm_pairs, compute_daily_rv, load_rv_source
 from cfm.data.transforms import apply_scaler, fit_scaler
 
 
@@ -74,8 +74,11 @@ def _build_source_pairs(
     rv_df = load_rv_source(harxhar_path, parquet_file, rv_column)
     daily_df = compute_daily_rv(rv_df)
     conditions, proportions, dates = build_cfm_pairs(
-        daily_df, context_days, intermediate_blocks,
-        intermediate_representation, intraday_summary_features,
+        daily_df,
+        context_days,
+        intermediate_blocks,
+        intermediate_representation,
+        intraday_summary_features,
     )
 
     # Date filtering
@@ -163,19 +166,35 @@ def build_dataloaders(
 
     # Build pairs from each source with date filtering
     train_cond, train_prop, _ = _build_source_pairs(
-        harxhar_path, train_source, source_columns[train_source],
-        context_days, intermediate_blocks, intermediate_representation,
-        intraday_summary_features, date_end=train_end,
+        harxhar_path,
+        train_source,
+        source_columns[train_source],
+        context_days,
+        intermediate_blocks,
+        intermediate_representation,
+        intraday_summary_features,
+        date_end=train_end,
     )
     val_cond, val_prop, _ = _build_source_pairs(
-        harxhar_path, val_source, source_columns[val_source],
-        context_days, intermediate_blocks, intermediate_representation,
-        intraday_summary_features, date_start=train_end, date_end=val_end,
+        harxhar_path,
+        val_source,
+        source_columns[val_source],
+        context_days,
+        intermediate_blocks,
+        intermediate_representation,
+        intraday_summary_features,
+        date_start=train_end,
+        date_end=val_end,
     )
     test_cond, test_prop, _ = _build_source_pairs(
-        harxhar_path, test_source, source_columns[test_source],
-        context_days, intermediate_blocks, intermediate_representation,
-        intraday_summary_features, date_start=val_end,
+        harxhar_path,
+        test_source,
+        source_columns[test_source],
+        context_days,
+        intermediate_blocks,
+        intermediate_representation,
+        intraday_summary_features,
+        date_start=val_end,
     )
 
     # Fit scaler on train only

@@ -123,7 +123,7 @@ def main():
         out_dir.mkdir(parents=True, exist_ok=True)
 
         idx = 0
-        for chunk_idx, (proportions_batch, cond_batch) in enumerate(loader):
+        for chunk_idx, (_proportions_batch, cond_batch) in enumerate(loader):
             cond_batch = cond_batch.to(device)
             B = cond_batch.shape[0]
 
@@ -137,9 +137,7 @@ def main():
                 chunk_proportions.append(props.cpu())
                 chunk_conditions.append(cond_batch.cpu())
 
-                daily_rv_batch = torch.tensor(
-                    split_daily_rv[idx : idx + B], dtype=torch.float32
-                )
+                daily_rv_batch = torch.tensor(split_daily_rv[idx : idx + B], dtype=torch.float32)
                 absolute = props.cpu() * daily_rv_batch.unsqueeze(-1)
                 chunk_absolute.append(absolute)
 

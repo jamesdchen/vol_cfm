@@ -5,7 +5,7 @@ import numpy as np
 
 def sqrt_transform(x: np.ndarray) -> np.ndarray:
     """Element-wise square root."""
-    return np.sqrt(x)
+    return np.sqrt(x)  # type: ignore[no-any-return]
 
 
 def normalize_to_proportions(intraday: np.ndarray, daily_rv: float) -> np.ndarray:
@@ -39,9 +39,9 @@ def apply_scaler(conditions: np.ndarray, stats: dict) -> np.ndarray:
     """Standardize conditions using precomputed stats."""
     if "mean" not in stats or "std" not in stats:
         raise KeyError(f"stats must contain 'mean' and 'std' keys, got {list(stats.keys())}")
-    return (conditions - stats["mean"]) / (stats["std"] + 1e-8)
+    return (conditions - stats["mean"]) / (stats["std"] + 1e-8)  # type: ignore[no-any-return]
 
 
 def inverse_scaler(conditions: np.ndarray, stats: dict) -> np.ndarray:
     """Reverse standardization."""
-    return conditions * (stats["std"] + 1e-8) + stats["mean"]
+    return conditions * (stats["std"] + 1e-8) + stats["mean"]  # type: ignore[no-any-return]

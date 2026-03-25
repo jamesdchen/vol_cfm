@@ -34,27 +34,32 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--checkpoint-every", type=int, default=10)
     parser.add_argument("--sigma-min", type=float, default=1e-4)
     parser.add_argument(
-        "--intermediate-blocks", type=int, nargs="*", default=[],
+        "--intermediate-blocks",
+        type=int,
+        nargs="*",
+        default=[],
         help="Block sizes (in 30-min bars) for intermediate RV conditioning. "
-             "E.g., 12 for 6h blocks, 6 for 3h blocks. Empty = baseline.",
+        "E.g., 12 for 6h blocks, 6 for 3h blocks. Empty = baseline.",
     )
     parser.add_argument(
-        "--intermediate-representation", type=str, default="sqrt",
+        "--intermediate-representation",
+        type=str,
+        default="sqrt",
         choices=["sqrt", "proportion", "both"],
         help="How to represent intermediate RV features.",
     )
-    parser.add_argument("--train-source", type=str, default="vwstock_stats.parquet",
-                        help="Parquet file for training data")
-    parser.add_argument("--val-source", type=str, default="ewstock_stats.parquet",
-                        help="Parquet file for validation data")
-    parser.add_argument("--test-source", type=str, default="core_stats.parquet",
-                        help="Parquet file for test data")
-    parser.add_argument("--no-intraday-summary", action="store_true",
-                        help="Disable intraday summary features (high/low/start/end)")
-    parser.add_argument("--num-workers", type=int, default=0,
-                        help="DataLoader workers (0=auto-detect)")
-    parser.add_argument("--no-pin-memory", action="store_true",
-                        help="Disable pin_memory in DataLoader")
+    parser.add_argument(
+        "--train-source", type=str, default="vwstock_stats.parquet", help="Parquet file for training data"
+    )
+    parser.add_argument(
+        "--val-source", type=str, default="ewstock_stats.parquet", help="Parquet file for validation data"
+    )
+    parser.add_argument("--test-source", type=str, default="core_stats.parquet", help="Parquet file for test data")
+    parser.add_argument(
+        "--no-intraday-summary", action="store_true", help="Disable intraday summary features (high/low/start/end)"
+    )
+    parser.add_argument("--num-workers", type=int, default=0, help="DataLoader workers (0=auto-detect)")
+    parser.add_argument("--no-pin-memory", action="store_true", help="Disable pin_memory in DataLoader")
     parser.add_argument("--verbose", action="store_true", help="Enable debug logging")
     parser.add_argument("--quiet", action="store_true", help="Only show warnings and errors")
 

@@ -38,26 +38,24 @@ class CFMTrainer:
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         # Data
-        self.train_loader, self.val_loader, self.test_loader, self.scaler_stats = (
-            build_dataloaders(
-                harxhar_path=config.harxhar_path,
-                context_days=config.context_days,
-                train_end=config.train_end,
-                val_end=config.val_end,
-                batch_size=config.batch_size,
-                seed=config.seed,
-                intermediate_blocks=config.intermediate_blocks,
-                intermediate_representation=config.intermediate_representation,
-                intraday_summary_features=config.intraday_summary_features,
-                train_source=config.train_source,
-                val_source=config.val_source,
-                test_source=config.test_source,
-                source_columns=config.source_columns,
-                num_workers=config.num_workers,
-                pin_memory=config.pin_memory,
-                persistent_workers=config.persistent_workers,
-                prefetch_factor=config.prefetch_factor,
-            )
+        self.train_loader, self.val_loader, self.test_loader, self.scaler_stats = build_dataloaders(
+            harxhar_path=config.harxhar_path,
+            context_days=config.context_days,
+            train_end=config.train_end,
+            val_end=config.val_end,
+            batch_size=config.batch_size,
+            seed=config.seed,
+            intermediate_blocks=config.intermediate_blocks,
+            intermediate_representation=config.intermediate_representation,
+            intraday_summary_features=config.intraday_summary_features,
+            train_source=config.train_source,
+            val_source=config.val_source,
+            test_source=config.test_source,
+            source_columns=config.source_columns,
+            num_workers=config.num_workers,
+            pin_memory=config.pin_memory,
+            persistent_workers=config.persistent_workers,
+            prefetch_factor=config.prefetch_factor,
         )
 
         # Model
@@ -101,9 +99,7 @@ class CFMTrainer:
             loss = cfm_loss(self.model, proportions, conditions, self.config.sigma_min)
             loss.backward()
 
-            torch.nn.utils.clip_grad_norm_(
-                self.model.parameters(), self.config.grad_clip
-            )
+            torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.config.grad_clip)
             self.optimizer.step()
             self.scheduler.step()
 
@@ -150,7 +146,11 @@ class CFMTrainer:
 
                 logger.info(
                     "Epoch %d/%d | train_loss=%.6f | val_loss=%.6f | lr=%.2e",
-                    epoch, self.config.num_epochs, train_loss, val_loss, lr,
+                    epoch,
+                    self.config.num_epochs,
+                    train_loss,
+                    val_loss,
+                    lr,
                 )
 
                 # Best model checkpoint

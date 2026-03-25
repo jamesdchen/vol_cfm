@@ -82,10 +82,9 @@ def main():
     sampler = CFMSampler(model, solver=config.solver, num_steps=config.num_ode_steps)
 
     gen_proportions_list = []
-    gen_absolute_list = []
     n_generated = 0
 
-    for proportions_batch, cond_batch in test_loader:
+    for _proportions_batch, cond_batch in test_loader:
         if n_generated >= args.num_samples:
             break
 
@@ -95,14 +94,9 @@ def main():
         gen_proportions_list.append(props.cpu().numpy())
 
         B = cond_batch.shape[0]
-        daily_rv_batch = test_daily_rv[n_generated : n_generated + B]
-        absolute = props.cpu().numpy() * daily_rv_batch[:, None]
-        gen_absolute_list.append(absolute)
-
         n_generated += B
 
     gen_proportions = np.concatenate(gen_proportions_list, axis=0)[: args.num_samples]
-    gen_absolute = np.concatenate(gen_absolute_list, axis=0)[: args.num_samples]
     real_subset = real_proportions[: args.num_samples]
     daily_rv_subset = test_daily_rv[: args.num_samples]
 
@@ -137,6 +131,7 @@ def main():
     logger.info("Saved: %s", output_dir / "acf_comparison.png")
 
     import matplotlib.pyplot as plt
+
     plt.close("all")
 
     # Save metrics as JSON

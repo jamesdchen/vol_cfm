@@ -53,14 +53,9 @@ def export_for_harxhar(
         Destination path for the parquet file.
     """
     if generated_paths.shape[0] != len(dates):
-        raise ValueError(
-            f"generated_paths has {generated_paths.shape[0]} rows but "
-            f"dates has {len(dates)} entries"
-        )
+        raise ValueError(f"generated_paths has {generated_paths.shape[0]} rows but dates has {len(dates)} entries")
     if generated_paths.shape[1] != PERIODS_PER_DAY:
-        raise ValueError(
-            f"Expected {PERIODS_PER_DAY} columns, got {generated_paths.shape[1]}"
-        )
+        raise ValueError(f"Expected {PERIODS_PER_DAY} columns, got {generated_paths.shape[1]}")
 
     rows_endbartime = []
     rows_sumret2 = []

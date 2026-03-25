@@ -64,9 +64,7 @@ def _acf(x: np.ndarray, max_lag: int) -> np.ndarray:
     return acf
 
 
-def acf_comparison(
-    real: np.ndarray, generated: np.ndarray, max_lag: int = 10
-) -> dict:
+def acf_comparison(real: np.ndarray, generated: np.ndarray, max_lag: int = 10) -> dict:
     """Compare autocorrelation structure of flattened real vs generated series.
 
     Parameters
@@ -169,9 +167,7 @@ def evaluate_all(
     results: dict = {}
 
     if daily_rv is not None:
-        results["daily_consistency_mae"] = daily_consistency_error(
-            generated, daily_rv
-        )
+        results["daily_consistency_mae"] = daily_consistency_error(generated, daily_rv)
 
     ks = marginal_ks_test(real, generated)
     results["marginal_mean_ks"] = ks["mean_ks"]
