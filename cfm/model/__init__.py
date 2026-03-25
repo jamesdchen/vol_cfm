@@ -48,6 +48,8 @@ def load_model_from_checkpoint(
         config.intermediate_representation = "sqrt"
     if not hasattr(config, "cond_dim"):
         config.cond_dim = config.context_days + 1
+    if not hasattr(config, "bridge_interpolation"):
+        config.bridge_interpolation = False
 
     model = ConditionalVectorField(
         output_dim=config.output_dim,

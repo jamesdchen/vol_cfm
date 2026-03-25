@@ -12,7 +12,7 @@ from cfm.cli import get_device
 from cfm.config import CFMConfig
 from cfm.data.dataset import build_dataloaders
 from cfm.logging import get_logger
-from cfm.model.flow_matching import cfm_loss
+from cfm.model.flow_matching import bridge_cfm_loss, cfm_loss
 from cfm.model.vector_field import ConditionalVectorField
 from cfm.training.scheduler import CosineWarmupScheduler
 
@@ -86,6 +86,18 @@ class CFMTrainer:
         self.epoch = 0
         self.best_val_loss = float("inf")
 
+    def _compute_loss(self, proportions: torch.Tensor, conditions: torch.Tensor) -> torch.Tensor:
+        """Dispatch to bridge or standard CFM loss based on config."""
+        if self.config.bridge_interpolation:
+            return bridge_cfm_loss(
+                self.model,
+                proportions,
+                conditions,
+                intermediate_blocks=self.config.intermediate_blocks,
+                sigma_min=self.config.sigma_min,
+            )
+        return cfm_loss(self.model, proportions, conditions, self.config.sigma_min)
+
     def train_epoch(self) -> float:
         """Run one training epoch. Returns mean loss."""
         self.model.train()
@@ -97,7 +109,7 @@ class CFMTrainer:
             conditions = conditions.to(self.device)
 
             self.optimizer.zero_grad()
-            loss = cfm_loss(self.model, proportions, conditions, self.config.sigma_min)
+            loss = self._compute_loss(proportions, conditions)
             loss.backward()
 
             torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.config.grad_clip)
@@ -120,7 +132,7 @@ class CFMTrainer:
             proportions = proportions.to(self.device)
             conditions = conditions.to(self.device)
 
-            loss = cfm_loss(self.model, proportions, conditions, self.config.sigma_min)
+            loss = self._compute_loss(proportions, conditions)
             total_loss += loss.item()
             n_batches += 1
 

@@ -34,6 +34,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--num-samples-per-day", type=int, default=1, help="Synthetic paths per conditioning day")
     parser.add_argument("--solver", type=str, default="dopri5")
     parser.add_argument("--num-steps", type=int, default=100)
+    parser.add_argument(
+        "--bridge-guidance-strength",
+        type=float,
+        default=0.0,
+        help="Strength of waypoint guidance during sampling (0=disabled).",
+    )
     parser.add_argument("--split", type=str, default="test", choices=["train", "val", "test", "all"])
     parser.add_argument("--seed", type=int, default=None, help="Random seed (defaults to config seed)")
     parser.add_argument("--verbose", action="store_true", help="Enable debug logging")
@@ -63,7 +69,18 @@ def main():
     conditions_raw, _, dates_raw = load_raw_pairs_from_config(args.harxhar_path, config)
 
     # Create sampler
-    sampler = CFMSampler(model, solver=args.solver, num_steps=args.num_steps)
+    bridge_blocks = (
+        config.intermediate_blocks
+        if getattr(config, "bridge_interpolation", False)
+        else None
+    )
+    sampler = CFMSampler(
+        model,
+        solver=args.solver,
+        num_steps=args.num_steps,
+        bridge_blocks=bridge_blocks,
+        bridge_guidance_strength=args.bridge_guidance_strength,
+    )
 
     # Determine splits to generate
     splits = ["train", "val", "test"] if args.split == "all" else [args.split]
