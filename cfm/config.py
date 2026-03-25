@@ -12,7 +12,7 @@ SUNDAY_OPEN = "18:30"
 @dataclass
 class CFMConfig:
     # Data
-    harxhar_path: str = "all30min"
+    harxhar_path: str = "data/all30min"
     context_days: int = CONTEXT_DAYS
     output_dim: int = OUTPUT_DIM
     train_end: str = "2020-12-31"

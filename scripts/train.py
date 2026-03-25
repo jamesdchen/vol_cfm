@@ -17,7 +17,7 @@ from cfm.training.trainer import CFMTrainer
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Train conditional flow matching model")
 
-    parser.add_argument("--harxhar-path", type=str, default="all30min")
+    parser.add_argument("--harxhar-path", type=str, default="data/all30min")
     parser.add_argument("--epochs", type=int, default=200)
     parser.add_argument("--batch-size", type=int, default=256)
     parser.add_argument("--lr", type=float, default=1e-3)

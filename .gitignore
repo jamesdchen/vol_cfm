@@ -9,7 +9,8 @@ build/
 checkpoints/
 logs/
 eval_results/
-data/
+data/*.pt
+data/*.csv
 .ruff_cache/
 .pytest_cache/
 .mypy_cache/

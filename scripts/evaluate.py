@@ -35,7 +35,7 @@ from cfm.model.vector_field import ConditionalVectorField
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Evaluate trained CFM model")
     parser.add_argument("--checkpoint", type=str, required=True, help="Path to checkpoint")
-    parser.add_argument("--harxhar-path", type=str, default="/home1/jc_905/harxhar/all30min")
+    parser.add_argument("--harxhar-path", type=str, default="data/all30min")
     parser.add_argument("--output-dir", type=str, default="eval_results")
     parser.add_argument("--num-samples", type=int, default=1000)
     return parser.parse_args()

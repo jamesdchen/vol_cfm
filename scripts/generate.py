@@ -23,7 +23,7 @@ from cfm.model.vector_field import ConditionalVectorField
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Generate synthetic intraday RV paths")
     parser.add_argument("--checkpoint", type=str, required=True, help="Path to trained checkpoint .pt file")
-    parser.add_argument("--harxhar-path", type=str, default="/home1/jc_905/harxhar/all30min")
+    parser.add_argument("--harxhar-path", type=str, default="data/all30min")
     parser.add_argument("--output", type=str, default="generated_samples.pt")
     parser.add_argument("--num-samples-per-day", type=int, default=1, help="Synthetic paths per conditioning day")
     parser.add_argument("--solver", type=str, default="dopri5")

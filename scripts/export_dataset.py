@@ -2,7 +2,7 @@
 """Export the CFM dataset (conditions, proportions, dates) to a .pt file.
 
 Usage:
-    python scripts/export_dataset.py --harxhar-path /home1/jc_905/harxhar/all30min
+    python scripts/export_dataset.py --harxhar-path data/all30min
     python scripts/export_dataset.py --output data/cfm_dataset.pt
 """
 
@@ -19,7 +19,7 @@ def main():
     parser = argparse.ArgumentParser(description="Export CFM dataset to .pt file")
     parser.add_argument(
         "--harxhar-path",
-        default="/home1/jc_905/harxhar/all30min",
+        default="data/all30min",
         help="Path to all30min parquet directory",
     )
     parser.add_argument(
