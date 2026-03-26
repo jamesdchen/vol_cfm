@@ -6,11 +6,54 @@ aligns source (noise) and target (data) samples before computing the
 conditional flow matching loss.
 """
 
+import math
+
 import torch
 from scipy.optimize import linear_sum_assignment
 from torch import Tensor
 
 from cfm.model.vector_field import ConditionalVectorField
+
+# ---------------------------------------------------------------------------
+# Logarithmic time warping for scale-invariant roughness bias
+# ---------------------------------------------------------------------------
+
+
+def log_time_warp(s: Tensor, beta: float) -> Tensor:
+    """Warp uniform samples to concentrate near *t = 1*.
+
+    Applies the map ``t = (1 - exp(-β·s)) / (1 - exp(-β))`` which, for
+    ``s ~ U(0, 1)``, yields a distribution over ``[0, 1]`` that places
+    log-uniform weight on the resolution scale ``1 − t``.  This injects a
+    scale-invariant roughness bias: the model trains equally hard on every
+    *octave* of detail as t → 1.
+
+    Args:
+        s: Uniform samples in ``[0, 1]``, any shape.
+        beta: Concentration strength.  ``beta → 0`` recovers uniform
+            sampling; larger values push more mass toward ``t = 1``.
+
+    Returns:
+        Warped time values in ``[0, 1]``, same shape as *s*.
+    """
+    if beta < 1e-6:
+        return s
+    return (1.0 - torch.exp(-beta * s)) / (1.0 - math.exp(-beta))
+
+
+def log_time_grid(n_steps: int, beta: float, device: torch.device) -> Tensor:
+    """Generate a time grid with log-spacing concentrated near *t = 1*.
+
+    Args:
+        n_steps: Number of integration steps (returns ``n_steps + 1`` points).
+        beta: Concentration strength (0 → uniform grid).
+        device: Torch device.
+
+    Returns:
+        Monotonic tensor of shape ``(n_steps + 1,)`` spanning ``[0, 1]``.
+    """
+    s = torch.linspace(0.0, 1.0, n_steps + 1, device=device)
+    return log_time_warp(s, beta)
 
 
 def ot_pair(x_0: Tensor, x_1: Tensor) -> tuple[Tensor, Tensor]:
@@ -41,12 +84,18 @@ def cfm_loss(
     sigma_min: float = 1e-4,
     prior_mean: Tensor | None = None,
     prior_std: float = 1.0,
+    log_time_beta: float = 0.0,
 ) -> Tensor:
     """Compute the OT-CFM training loss.
 
     Samples source x_0 from the prior (standard Gaussian or diurnal),
     pairs with data x_1 via OT, builds the linear interpolant x_t,
     and regresses the predicted velocity toward the analytic velocity u_t.
+
+    When *log_time_beta* > 0 the training time ``t`` is drawn from a
+    log-warped distribution that concentrates samples near ``t = 1``,
+    injecting a scale-invariant roughness bias so the model allocates
+    equal capacity to each octave of intraday detail.
 
     Args:
         vector_field: The neural vector field network.
@@ -55,6 +104,8 @@ def cfm_loss(
         sigma_min: Minimum noise scale (controls path straightness).
         prior_mean: Mean of source distribution, shape (48,). If None, uses N(0, I).
         prior_std: Std of source distribution.
+        log_time_beta: Strength of log-time warp (0 = uniform, higher = more
+            concentration near t=1).
 
     Returns:
         Scalar MSE loss.
@@ -68,7 +119,8 @@ def cfm_loss(
         x_0 = prior_mean.unsqueeze(0) + prior_std * torch.randn_like(x_1)
     else:
         x_0 = torch.randn_like(x_1)
-    t = torch.rand(B, device=device)
+    s = torch.rand(B, device=device)
+    t = log_time_warp(s, log_time_beta) if log_time_beta > 0.0 else s
 
     # OT pairing
     x_0, x_1 = ot_pair(x_0, x_1)
@@ -148,6 +200,7 @@ def bridge_cfm_loss(
     intermediate_blocks: list[int],
     sigma_min: float = 1e-4,
     bridge_time_schedule: str = "uniform",
+    log_time_beta: float = 0.0,
 ) -> Tensor:
     """OT-CFM loss with coarse-to-fine bridge interpolation.
 
@@ -173,14 +226,16 @@ def bridge_cfm_loss(
 
     # Sample noise and time
     x_0 = torch.randn_like(x_1)
-    t = torch.rand(B, device=device)
+    s = torch.rand(B, device=device)
+    t = log_time_warp(s, log_time_beta) if log_time_beta > 0.0 else s
 
     # OT pairing
     x_0, x_1 = ot_pair(x_0, x_1)
 
     # Build schedule and ordered waypoints
     sorted_blocks, time_bounds = compute_bridge_schedule(
-        intermediate_blocks, bridge_time_schedule,
+        intermediate_blocks,
+        bridge_time_schedule,
     )
 
     # waypoints: [x_0, coarsest_waypoint, ..., finest_waypoint, x_1]
@@ -190,7 +245,6 @@ def bridge_cfm_loss(
     waypoints.append(x_1)
 
     # Determine segment membership and compute interpolant + velocity
-    t_col = t[:, None]  # (B, 1)
     x_t = torch.zeros_like(x_1)
     u_t = torch.zeros_like(x_1)
 
@@ -201,10 +255,7 @@ def bridge_cfm_loss(
         seg_len = t_end - t_start
 
         # Mask: which batch elements fall in this segment
-        if seg_idx == n_segments - 1:
-            mask = (t >= t_start) & (t <= t_end)
-        else:
-            mask = (t >= t_start) & (t < t_end)
+        mask = (t >= t_start) & (t <= t_end) if seg_idx == n_segments - 1 else (t >= t_start) & (t < t_end)
 
         if not mask.any():
             continue
@@ -212,18 +263,18 @@ def bridge_cfm_loss(
         mask_col = mask[:, None]
 
         # Local time within segment, rescaled to [0, 1]
-        s = ((t - t_start) / seg_len)[:, None]
+        s_local = ((t - t_start) / seg_len)[:, None]
 
         w_start = waypoints[seg_idx]
         w_end = waypoints[seg_idx + 1]
 
         if seg_idx == 0:
             # First segment (noise → coarsest waypoint): apply sigma_min
-            local_x_t = (1.0 - (1.0 - sigma_min) * s) * w_start + s * w_end
+            local_x_t = (1.0 - (1.0 - sigma_min) * s_local) * w_start + s_local * w_end
             local_u_t = (w_end - (1.0 - sigma_min) * w_start) / seg_len
         else:
             # Later segments (waypoint → waypoint): deterministic
-            local_x_t = (1.0 - s) * w_start + s * w_end
+            local_x_t = (1.0 - s_local) * w_start + s_local * w_end
             local_u_t = (w_end - w_start) / seg_len
 
         x_t = torch.where(mask_col, local_x_t, x_t)

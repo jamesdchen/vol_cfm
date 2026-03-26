@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""Export the CFM dataset (conditions, proportions, dates) to a .pt file.
+"""Export the CFM dataset (proportions, daily_rvs, dates) to a .pt file.
 
 Usage:
     python scripts/export_dataset.py --harxhar-path data/all30min
@@ -12,7 +12,7 @@ from pathlib import Path
 import torch
 
 from cfm.cli import setup_logging
-from cfm.data.loading import build_cfm_pairs, compute_daily_rv, load_rv
+from cfm.data.loading import build_inpainting_pairs, compute_daily_rv, load_rv
 
 
 def main():
@@ -26,12 +26,6 @@ def main():
         "--output",
         default="data/cfm_dataset.pt",
         help="Output .pt file path",
-    )
-    parser.add_argument(
-        "--context-days",
-        type=int,
-        default=5,
-        help="Number of lagged daily RV values in condition",
     )
     parser.add_argument("--verbose", action="store_true", help="Enable debug logging")
     parser.add_argument("--quiet", action="store_true", help="Only show warnings and errors")
@@ -48,18 +42,15 @@ def main():
     daily_df = compute_daily_rv(rv_df)
     logger.info("  Trading days (48 bars each): %s", f"{len(daily_df):,}")
 
-    logger.info("Building CFM pairs (context_days=%d) ...", args.context_days)
-    conditions, proportions, dates = build_cfm_pairs(daily_df, args.context_days)
-    logger.info("  Samples: %s", f"{len(conditions):,}")
-    logger.info("  Condition shape: %s", conditions.shape)
+    logger.info("Building inpainting pairs ...")
+    proportions, daily_rvs, intraday_raw, dates = build_inpainting_pairs(daily_df)
+    logger.info("  Samples: %s", f"{len(proportions):,}")
     logger.info("  Proportion shape: %s", proportions.shape)
     logger.info("  Date range: %s -> %s", dates[0], dates[-1])
 
     # Summary stats
     logger.info("")
     logger.info("Summary statistics:")
-    logger.info("  Condition mean: %s", conditions.mean(axis=0))
-    logger.info("  Condition std:  %s", conditions.std(axis=0))
     logger.info("  Proportion min: %.6f", proportions.min())
     logger.info("  Proportion max: %.6f", proportions.max())
     logger.info(
@@ -74,10 +65,10 @@ def main():
 
     torch.save(
         {
-            "conditions": torch.tensor(conditions, dtype=torch.float32),
             "proportions": torch.tensor(proportions, dtype=torch.float32),
+            "daily_rvs": torch.tensor(daily_rvs, dtype=torch.float32),
+            "intraday_raw": torch.tensor(intraday_raw, dtype=torch.float32),
             "dates": dates,
-            "context_days": args.context_days,
         },
         output_path,
     )

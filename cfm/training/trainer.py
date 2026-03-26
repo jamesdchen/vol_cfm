@@ -85,6 +85,7 @@ class CFMTrainer:
                 cond,
                 intermediate_blocks=self.config.block_granularities,
                 sigma_min=self.config.sigma_min,
+                log_time_beta=self.config.log_time_beta,
             )
         return cfm_loss(
             self.model,
@@ -93,6 +94,7 @@ class CFMTrainer:
             self.config.sigma_min,
             prior_mean=self.diurnal_mean,
             prior_std=self.config.diurnal_prior_std,
+            log_time_beta=self.config.log_time_beta,
         )
 
     def train_epoch(self) -> float:

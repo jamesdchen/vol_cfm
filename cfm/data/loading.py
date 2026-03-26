@@ -211,7 +211,7 @@ def build_inpainting_pairs(
     dates_arr = daily_df["date"].values
 
     # Filter out zero-RV days
-    valid = daily_rv > 0
+    valid = np.asarray(daily_rv) > 0
     daily_rv = daily_rv[valid]
     intraday = intraday[valid]
     dates_arr = dates_arr[valid]

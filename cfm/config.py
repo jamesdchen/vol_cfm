@@ -49,6 +49,10 @@ class CFMConfig:
     # Bridge interpolation (coarse-to-fine)
     bridge_interpolation: bool = False
 
+    # Log-time warp: concentrate training time near t=1 for
+    # scale-invariant roughness bias.  0 = disabled (uniform).
+    log_time_beta: float = 0.0
+
     def __post_init__(self) -> None:
         for bs in self.block_granularities:
             if PERIODS_PER_DAY % bs != 0:

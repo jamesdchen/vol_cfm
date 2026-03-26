@@ -74,9 +74,7 @@ def main():
     if diurnal_mean is not None:
         diurnal_mean_tensor = torch.tensor(diurnal_mean, dtype=torch.float32, device=device)
 
-    bridge_blocks = (
-        config.block_granularities if getattr(config, "bridge_interpolation", False) else None
-    )
+    bridge_blocks = config.block_granularities if getattr(config, "bridge_interpolation", False) else None
     sampler = CFMSampler(
         model,
         solver=args.solver,
@@ -85,6 +83,7 @@ def main():
         diurnal_std=config.diurnal_prior_std,
         bridge_blocks=bridge_blocks,
         bridge_guidance_strength=args.bridge_guidance_strength,
+        log_time_beta=getattr(config, "log_time_beta", 0.0),
     )
 
     # Output directory

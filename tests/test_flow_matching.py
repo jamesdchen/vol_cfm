@@ -121,7 +121,10 @@ def test_compute_block_waypoint_sum_preserved():
     for block_size in [2, 4, 6, 12, 24, 48]:
         wp = compute_block_waypoint(x_1, block_size)
         torch.testing.assert_close(
-            wp.sum(dim=1), x_1.sum(dim=1), atol=1e-5, rtol=1e-5,
+            wp.sum(dim=1),
+            x_1.sum(dim=1),
+            atol=1e-5,
+            rtol=1e-5,
         )
 
 

@@ -58,6 +58,8 @@ def load_model_from_checkpoint(
         config.cond_dim = 2 * 48 + 1
     if not hasattr(config, "bridge_interpolation"):
         config.bridge_interpolation = False
+    if not hasattr(config, "log_time_beta"):
+        config.log_time_beta = 0.0
 
     model = ConditionalVectorField(
         output_dim=config.output_dim,

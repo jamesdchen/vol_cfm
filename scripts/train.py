@@ -75,6 +75,12 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--test-source", type=str, default="core_stats.parquet", help="Parquet file for test data")
     parser.add_argument("--num-workers", type=int, default=0, help="DataLoader workers (0=auto-detect)")
+    parser.add_argument(
+        "--log-time-beta",
+        type=float,
+        default=0.0,
+        help="Log-time warp strength (0=uniform, >0 concentrates near t=1 for roughness bias).",
+    )
     parser.add_argument("--no-pin-memory", action="store_true", help="Disable pin_memory in DataLoader")
     parser.add_argument("--verbose", action="store_true", help="Enable debug logging")
     parser.add_argument("--quiet", action="store_true", help="Only show warnings and errors")
@@ -110,6 +116,7 @@ def main():
         val_source=args.val_source,
         test_source=args.test_source,
         bridge_interpolation=args.bridge_interpolation,
+        log_time_beta=args.log_time_beta,
         num_workers=args.num_workers,
         pin_memory=not args.no_pin_memory,
     )

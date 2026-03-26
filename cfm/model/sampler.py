@@ -8,7 +8,7 @@ import torch
 import torch.nn.functional as F
 from torch import Tensor
 
-from cfm.model.flow_matching import compute_bridge_schedule
+from cfm.model.flow_matching import compute_bridge_schedule, log_time_grid
 from cfm.model.vector_field import ConditionalVectorField
 
 try:
@@ -51,6 +51,7 @@ class CFMSampler:
         diurnal_std: float = 1.0,
         bridge_blocks: list[int] | None = None,
         bridge_guidance_strength: float = 0.0,
+        log_time_beta: float = 0.0,
     ) -> None:
         self.vector_field = vector_field
         self.solver = solver
@@ -59,6 +60,7 @@ class CFMSampler:
         self.diurnal_std = diurnal_std
         self.bridge_blocks = bridge_blocks
         self.bridge_guidance_strength = bridge_guidance_strength
+        self.log_time_beta = log_time_beta
 
         if bridge_blocks:
             self._sorted_blocks, self._time_bounds = compute_bridge_schedule(bridge_blocks)
@@ -112,17 +114,19 @@ class CFMSampler:
                     x = traj[-1]
                 else:
                     seg_steps = max(1, int(self.num_steps * (t_end - t_start)))
-                    dt = (t_end - t_start) / seg_steps
+                    if self.log_time_beta > 0.0:
+                        seg_grid = log_time_grid(seg_steps, self.log_time_beta, device)
+                        seg_grid = t_start + (t_end - t_start) * seg_grid
+                    else:
+                        seg_grid = torch.linspace(t_start, t_end, seg_steps + 1, device=device)
                     for i in range(seg_steps):
-                        t_val = t_start + i * dt
+                        t_val = seg_grid[i].item()
+                        dt = (seg_grid[i + 1] - seg_grid[i]).item()
                         t_batch = torch.full((B,), t_val, device=device)
                         x = x + dt * self.vector_field(x, t_batch, cond)
 
                 # Apply waypoint guidance between segments (not after last)
-                if (
-                    seg_idx < n_segments - 1
-                    and self.bridge_guidance_strength > 0
-                ):
+                if seg_idx < n_segments - 1 and self.bridge_guidance_strength > 0:
                     bs = self._sorted_blocks[seg_idx]
                     projected = _block_project(x, bs)
                     alpha = self.bridge_guidance_strength
@@ -134,10 +138,16 @@ class CFMSampler:
             trajectory = odeint(ode_fn, x_0, t_span, method=self.solver)
             x_1 = trajectory[-1]
         else:
-            dt = 1.0 / self.num_steps
+            # Use log-time grid when beta > 0 so the Euler solver spends
+            # more steps near t=1 (matching the training distribution).
+            if self.log_time_beta > 0.0:
+                t_grid = log_time_grid(self.num_steps, self.log_time_beta, device)
+            else:
+                t_grid = torch.linspace(0.0, 1.0, self.num_steps + 1, device=device)
             x = x_0
             for i in range(self.num_steps):
-                t_val = i * dt
+                t_val = t_grid[i].item()
+                dt = (t_grid[i + 1] - t_grid[i]).item()
                 t_batch = torch.full((B,), t_val, device=device)
                 x = x + dt * self.vector_field(x, t_batch, cond)
             x_1 = x

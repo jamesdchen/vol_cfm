@@ -58,8 +58,10 @@ def build_mask_and_known(
     mask = np.zeros(PERIODS_PER_DAY, dtype=np.float32)
     known_values = np.zeros(PERIODS_PER_DAY, dtype=np.float32)
 
-    # Coarse block observations: spread uniformly as proportions
-    for bs in block_sizes:
+    # Coarse block observations: spread uniformly as proportions.
+    # Process coarsest (largest block_size) first so finer resolutions
+    # overwrite with more detailed values.
+    for bs in sorted(block_sizes, reverse=True):
         block_rv = compute_block_rv(intraday_48, bs)
         spread = spread_block_rv(block_rv, bs) / daily_rv  # proportions
         mask[:] = 1.0
