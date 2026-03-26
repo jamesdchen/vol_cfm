@@ -12,13 +12,11 @@ import json
 from pathlib import Path
 
 import numpy as np
-import torch.nn.functional as F
+import torch
 
 from cfm.cli import (
     build_dataloaders_from_config,
-    get_split_mask,
     load_checkpoint_and_device,
-    load_raw_pairs_from_config,
     save_figure,
     setup_logging,
 )
@@ -55,42 +53,52 @@ def main():
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # Load checkpoint
-    model, scaler_stats, config, device = load_checkpoint_and_device(args.checkpoint)
+    model, config, diurnal_mean, device = load_checkpoint_and_device(args.checkpoint)
 
     # Build test set
-    train_loader, val_loader, test_loader, _ = build_dataloaders_from_config(args.harxhar_path, config)
+    _, _, test_loader, metadata = build_dataloaders_from_config(args.harxhar_path, config)
 
-    # Get raw test data for metrics
-    conditions_raw, proportions_raw, dates_raw = load_raw_pairs_from_config(args.harxhar_path, config)
+    # Create sampler with diurnal prior
+    diurnal_mean_tensor = None
+    if diurnal_mean is not None:
+        diurnal_mean_tensor = torch.tensor(diurnal_mean, dtype=torch.float32, device=device)
 
-    test_mask = get_split_mask(dates_raw, config, "test")
-    real_proportions = proportions_raw[test_mask]
-    test_daily_rv = conditions_raw[test_mask, 0] ** 2  # undo sqrt
+    sampler = CFMSampler(
+        model,
+        solver=config.solver,
+        num_steps=config.num_ode_steps,
+        diurnal_mean=diurnal_mean_tensor,
+        diurnal_std=config.diurnal_prior_std,
+    )
 
-    # Generate samples for test conditions
-    sampler = CFMSampler(model, solver=config.solver, num_steps=config.num_ode_steps)
-
+    # Generate samples and collect real data from test loader
     gen_proportions_list = []
+    real_proportions_list = []
+    daily_rv_list = []
     n_generated = 0
 
-    for _proportions_batch, cond_batch in test_loader:
+    for x_1_batch, cond_batch in test_loader:
         if n_generated >= args.num_samples:
             break
 
         cond_batch = cond_batch.to(device)
-        raw = sampler.sample(cond_batch)
-        props = F.softmax(raw, dim=-1)
+        props = sampler.sample_proportions(cond_batch)
         gen_proportions_list.append(props.cpu().numpy())
+        real_proportions_list.append(x_1_batch.numpy())
+
+        # Extract daily_rv from cond[:, -1]**2
+        daily_rv_batch = (cond_batch[:, -1] ** 2).cpu().numpy()
+        daily_rv_list.append(daily_rv_batch)
 
         B = cond_batch.shape[0]
         n_generated += B
 
     gen_proportions = np.concatenate(gen_proportions_list, axis=0)[: args.num_samples]
-    real_subset = real_proportions[: args.num_samples]
-    daily_rv_subset = test_daily_rv[: args.num_samples]
+    real_proportions = np.concatenate(real_proportions_list, axis=0)[: args.num_samples]
+    daily_rv_subset = np.concatenate(daily_rv_list, axis=0)[: args.num_samples]
 
     # Evaluate
-    metrics = evaluate_all(real_subset, gen_proportions, daily_rv=daily_rv_subset)
+    metrics = evaluate_all(real_proportions, gen_proportions, daily_rv=daily_rv_subset)
 
     # Print metrics table
     logger.info("")
@@ -102,16 +110,16 @@ def main():
     logger.info("=" * 50)
 
     # Generate visualizations
-    fig1, _ = plot_sample_paths(real_subset, gen_proportions)
+    fig1, _ = plot_sample_paths(real_proportions, gen_proportions)
     save_figure(fig1, output_dir / "sample_paths.png", logger)
 
-    fig2, _ = plot_diurnal_pattern(real_subset, gen_proportions)
+    fig2, _ = plot_diurnal_pattern(real_proportions, gen_proportions)
     save_figure(fig2, output_dir / "diurnal_pattern.png", logger)
 
-    fig3, _ = plot_marginal_distributions(real_subset, gen_proportions)
+    fig3, _ = plot_marginal_distributions(real_proportions, gen_proportions)
     save_figure(fig3, output_dir / "marginal_distributions.png", logger)
 
-    acf_results = acf_comparison(real_subset, gen_proportions)
+    acf_results = acf_comparison(real_proportions, gen_proportions)
     fig4, _ = plot_acf(acf_results["real_acf"], acf_results["gen_acf"])
     save_figure(fig4, output_dir / "acf_comparison.png", logger)
 

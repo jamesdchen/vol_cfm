@@ -2,7 +2,7 @@
 
 Usage:
     python scripts/generate.py --checkpoint checkpoints/best.pt
-    python scripts/generate.py --checkpoint checkpoints/best.pt --split all --num-samples-per-day 5
+    python scripts/generate.py --checkpoint checkpoints/best.pt --num-samples-per-day 5
     python scripts/generate.py --checkpoint checkpoints/best.pt --output-dir samples --seed 0
 """
 
@@ -13,14 +13,10 @@ from pathlib import Path
 
 import numpy as np
 import torch
-import torch.nn.functional as F
-from torch.utils.data import DataLoader
 
 from cfm.cli import (
     build_dataloaders_from_config,
-    get_split_mask,
     load_checkpoint_and_device,
-    load_raw_pairs_from_config,
     setup_logging,
 )
 from cfm.model.sampler import CFMSampler
@@ -35,12 +31,18 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--solver", type=str, default="dopri5")
     parser.add_argument("--num-steps", type=int, default=100)
     parser.add_argument(
+        "--block-granularities",
+        type=int,
+        nargs="*",
+        default=None,
+        help="Block granularities for inference mask. Defaults to checkpoint config.",
+    )
+    parser.add_argument(
         "--bridge-guidance-strength",
         type=float,
         default=0.0,
         help="Strength of waypoint guidance during sampling (0=disabled).",
     )
-    parser.add_argument("--split", type=str, default="test", choices=["train", "val", "test", "all"])
     parser.add_argument("--seed", type=int, default=None, help="Random seed (defaults to config seed)")
     parser.add_argument("--verbose", action="store_true", help="Enable debug logging")
     parser.add_argument("--quiet", action="store_true", help="Only show warnings and errors")
@@ -53,105 +55,86 @@ def main():
     logger = setup_logging(args)
 
     # Load checkpoint
-    model, scaler_stats, config, device = load_checkpoint_and_device(args.checkpoint)
+    model, config, diurnal_mean, device = load_checkpoint_and_device(args.checkpoint)
+
+    # Override block granularities if specified
+    if args.block_granularities is not None:
+        config.block_granularities = args.block_granularities
 
     # Resolve seed
     seed = args.seed if args.seed is not None else config.seed
     torch.manual_seed(seed)
     np.random.seed(seed)
 
-    # Build dataloaders
-    train_loader, val_loader, test_loader, _ = build_dataloaders_from_config(args.harxhar_path, config, seed)
+    # Build dataloaders (test set)
+    _, _, test_loader, metadata = build_dataloaders_from_config(args.harxhar_path, config)
 
-    split_map = {"train": train_loader, "val": val_loader, "test": test_loader}
+    # Create sampler with diurnal prior
+    diurnal_mean_tensor = None
+    if diurnal_mean is not None:
+        diurnal_mean_tensor = torch.tensor(diurnal_mean, dtype=torch.float32, device=device)
 
-    # Raw conditions for denormalization
-    conditions_raw, _, dates_raw = load_raw_pairs_from_config(args.harxhar_path, config)
-
-    # Create sampler
     bridge_blocks = (
-        config.intermediate_blocks
-        if getattr(config, "bridge_interpolation", False)
-        else None
+        config.block_granularities if getattr(config, "bridge_interpolation", False) else None
     )
     sampler = CFMSampler(
         model,
         solver=args.solver,
         num_steps=args.num_steps,
+        diurnal_mean=diurnal_mean_tensor,
+        diurnal_std=config.diurnal_prior_std,
         bridge_blocks=bridge_blocks,
         bridge_guidance_strength=args.bridge_guidance_strength,
     )
 
-    # Determine splits to generate
-    splits = ["train", "val", "test"] if args.split == "all" else [args.split]
+    # Output directory
+    out_dir = Path(args.output_dir) / f"seed_{seed}"
+    out_dir.mkdir(parents=True, exist_ok=True)
 
     total_chunks = 0
     total_samples = 0
 
-    for split_name in splits:
-        loader = split_map[split_name]
+    for chunk_idx, (_x_1_batch, cond_batch) in enumerate(test_loader):
+        cond_batch = cond_batch.to(device)
+        B = cond_batch.shape[0]
 
-        # Always use shuffle=False for generation (train loader shuffles by default,
-        # which breaks the idx -> daily_rv mapping)
-        if split_name == "train":
-            loader = DataLoader(loader.dataset, batch_size=config.batch_size, shuffle=False)
+        chunk_proportions = []
+        chunk_absolute = []
+        chunk_conditions = []
 
-        mask = get_split_mask(dates_raw, config, split_name)
-        split_conditions_raw = conditions_raw[mask]
-        split_dates = dates_raw[mask]
-        split_daily_rv = split_conditions_raw[:, 0] ** 2  # undo sqrt
+        # Extract daily_rv from cond[:, -1]**2
+        daily_rv_batch = cond_batch[:, -1] ** 2  # (B,)
 
-        # Output directory for this split
-        out_dir = Path(args.output_dir) / f"seed_{seed}" / split_name
-        out_dir.mkdir(parents=True, exist_ok=True)
+        for _ in range(args.num_samples_per_day):
+            props = sampler.sample_proportions(cond_batch)  # (B, 48)
+            chunk_proportions.append(props.cpu())
+            chunk_conditions.append(cond_batch.cpu())
 
-        idx = 0
-        for chunk_idx, (_proportions_batch, cond_batch) in enumerate(loader):
-            cond_batch = cond_batch.to(device)
-            B = cond_batch.shape[0]
+            absolute = props.cpu() * daily_rv_batch.cpu().unsqueeze(-1)
+            chunk_absolute.append(absolute)
 
-            chunk_proportions = []
-            chunk_absolute = []
-            chunk_conditions = []
+        chunk_path = out_dir / f"chunk_{chunk_idx:04d}.pt"
+        torch.save(
+            {
+                "generated_proportions": torch.cat(chunk_proportions, dim=0),
+                "generated_absolute": torch.cat(chunk_absolute, dim=0),
+                "conditions": torch.cat(chunk_conditions, dim=0),
+                "split": "test",
+                "seed": seed,
+                "chunk_idx": chunk_idx,
+            },
+            chunk_path,
+        )
 
-            for _ in range(args.num_samples_per_day):
-                raw = sampler.sample(cond_batch)
-                props = F.softmax(raw, dim=-1)  # (B, 48)
-                chunk_proportions.append(props.cpu())
-                chunk_conditions.append(cond_batch.cpu())
+        total_chunks += 1
+        total_samples += B * args.num_samples_per_day
 
-                daily_rv_batch = torch.tensor(split_daily_rv[idx : idx + B], dtype=torch.float32)
-                absolute = props.cpu() * daily_rv_batch.unsqueeze(-1)
-                chunk_absolute.append(absolute)
-
-            idx += B
-
-            chunk_dates = np.repeat(split_dates[idx - B : idx], args.num_samples_per_day)
-
-            chunk_path = out_dir / f"chunk_{chunk_idx:04d}.pt"
-            torch.save(
-                {
-                    "generated_proportions": torch.cat(chunk_proportions, dim=0),
-                    "generated_absolute": torch.cat(chunk_absolute, dim=0),
-                    "conditions": torch.cat(chunk_conditions, dim=0),
-                    "dates": chunk_dates,
-                    "split": split_name,
-                    "seed": seed,
-                    "chunk_idx": chunk_idx,
-                },
-                chunk_path,
-            )
-
-            total_chunks += 1
-            total_samples += len(chunk_dates)
-
-        logger.info("Split %-5s: %d days, %d chunks → %s", split_name, len(split_dates), chunk_idx + 1, out_dir)
-
+    logger.info("Test set: %d chunks", total_chunks)
     logger.info("Seed:                 %d", seed)
     logger.info("Samples per day:      %d", args.num_samples_per_day)
     logger.info("Total chunks:         %d", total_chunks)
     logger.info("Total samples:        %d", total_samples)
-    logger.info("Output dir:           %s", args.output_dir)
+    logger.info("Output dir:           %s", out_dir)
 
 
 if __name__ == "__main__":

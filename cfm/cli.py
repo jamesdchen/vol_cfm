@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 import torch
 
-from cfm.data.loading import build_cfm_pairs, compute_daily_rv, load_rv
+from cfm.data.loading import build_inpainting_pairs, compute_daily_rv, load_rv
 from cfm.logging import get_logger
 from cfm.model import load_model_from_checkpoint
 
@@ -48,7 +48,7 @@ def get_device() -> torch.device:
 
 def load_checkpoint_and_device(
     checkpoint_path: str,
-) -> tuple[ConditionalVectorField, dict, CFMConfig, torch.device]:
+) -> tuple[ConditionalVectorField, CFMConfig, np.ndarray | None, torch.device]:
     """Load a trained checkpoint and auto-detect device.
 
     Combines :func:`get_device` with :func:`~cfm.model.load_model_from_checkpoint`.
@@ -62,28 +62,25 @@ def load_checkpoint_and_device(
     -------
     model : ConditionalVectorField
         Model with loaded weights, in eval mode on *device*.
-    scaler_stats : dict
-        Per-column mean/std used during training.
     config : CFMConfig
         Experiment configuration stored in the checkpoint.
+    diurnal_mean : numpy.ndarray | None
+        Per-period mean proportions (48,) or None.
     device : torch.device
         Device the model was loaded onto.
     """
     device = get_device()
-    model, scaler_stats, config = load_model_from_checkpoint(checkpoint_path, device)
-    return model, scaler_stats, config, device
+    model, config, diurnal_mean = load_model_from_checkpoint(checkpoint_path, device)
+    return model, config, diurnal_mean, device
 
 
 def build_dataloaders_from_config(
     harxhar_path: str,
     config: CFMConfig,
-    seed: int | None = None,
 ) -> tuple:
     """Build train/val/test dataloaders from a :class:`CFMConfig`.
 
-    Wraps :func:`~cfm.data.dataset.build_dataloaders` with ``getattr``
-    fallbacks for backward compatibility with older configs that may lack
-    intermediate feature fields.
+    Wraps :func:`~cfm.data.dataset.build_inpainting_dataloaders`.
 
     Parameters
     ----------
@@ -91,60 +88,45 @@ def build_dataloaders_from_config(
         Path to all30min parquet directory.
     config : CFMConfig
         Experiment configuration (typically from a checkpoint).
-    seed : int or None
-        Random seed override. If *None*, uses ``config.seed``.
 
     Returns
     -------
     tuple
-        ``(train_loader, val_loader, test_loader, scaler_stats)``
+        ``(train_loader, val_loader, test_loader, metadata)`` where
+        ``metadata["diurnal_mean"]`` is a numpy array of shape (48,).
     """
-    from cfm.data.dataset import build_dataloaders
+    from cfm.data.dataset import build_inpainting_dataloaders
 
-    return build_dataloaders(
+    return build_inpainting_dataloaders(
         harxhar_path=harxhar_path,
-        context_days=config.context_days,
-        train_end=config.train_end,
-        val_end=config.val_end,
-        batch_size=config.batch_size,
-        seed=seed if seed is not None else config.seed,
-        intermediate_blocks=getattr(config, "intermediate_blocks", []),
-        intermediate_representation=getattr(config, "intermediate_representation", "sqrt"),
+        config=config,
     )
 
 
 def load_raw_pairs_from_config(
     harxhar_path: str,
-    config: CFMConfig,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Load raw CFM pairs (conditions, proportions, dates) from config.
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """Load raw inpainting pairs (proportions, daily_rvs, intraday_raw, dates).
 
     Runs the full pipeline: :func:`~cfm.data.loading.load_rv` ->
     :func:`~cfm.data.loading.compute_daily_rv` ->
-    :func:`~cfm.data.loading.build_cfm_pairs` with intermediate feature
-    settings from *config* (with backward-compat fallbacks).
+    :func:`~cfm.data.loading.build_inpainting_pairs`.
 
     Parameters
     ----------
     harxhar_path : str
         Path to all30min parquet directory.
-    config : CFMConfig
-        Experiment configuration.
 
     Returns
     -------
-    conditions : np.ndarray, shape (N, cond_dim)
     proportions : np.ndarray, shape (N, 48)
+    daily_rvs : np.ndarray, shape (N,)
+    intraday_raw : np.ndarray, shape (N, 48)
     dates : np.ndarray, shape (N,)
     """
     rv_df = load_rv(harxhar_path)
     daily_df = compute_daily_rv(rv_df)
-    return build_cfm_pairs(
-        daily_df,
-        config.context_days,
-        getattr(config, "intermediate_blocks", []),
-        getattr(config, "intermediate_representation", "sqrt"),
-    )
+    return build_inpainting_pairs(daily_df)
 
 
 def get_split_mask(

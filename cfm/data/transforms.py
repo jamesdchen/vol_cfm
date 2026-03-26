@@ -45,3 +45,19 @@ def apply_scaler(conditions: np.ndarray, stats: dict) -> np.ndarray:
 def inverse_scaler(conditions: np.ndarray, stats: dict) -> np.ndarray:
     """Reverse standardization."""
     return conditions * (stats["std"] + 1e-8) + stats["mean"]  # type: ignore[no-any-return]
+
+
+def compute_diurnal_prior(proportions: np.ndarray) -> np.ndarray:
+    """Compute the empirical mean diurnal proportion curve.
+
+    Parameters
+    ----------
+    proportions : np.ndarray, shape (N, 48)
+        Training set proportion vectors.
+
+    Returns
+    -------
+    np.ndarray, shape (48,)
+        Mean proportion at each 30-min bar.
+    """
+    return proportions.mean(axis=0).astype(np.float32)  # type: ignore[no-any-return]

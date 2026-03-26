@@ -10,7 +10,7 @@ import torch
 
 from cfm.cli import get_device
 from cfm.config import CFMConfig
-from cfm.data.dataset import build_dataloaders
+from cfm.data.dataset import build_inpainting_dataloaders
 from cfm.logging import get_logger
 from cfm.model.flow_matching import bridge_cfm_loss, cfm_loss
 from cfm.model.vector_field import ConditionalVectorField
@@ -39,25 +39,15 @@ class CFMTrainer:
         self.device = get_device()
 
         # Data
-        self.train_loader, self.val_loader, self.test_loader, self.scaler_stats = build_dataloaders(
-            harxhar_path=config.harxhar_path,
-            context_days=config.context_days,
-            train_end=config.train_end,
-            val_end=config.val_end,
-            batch_size=config.batch_size,
-            seed=config.seed,
-            intermediate_blocks=config.intermediate_blocks,
-            intermediate_representation=config.intermediate_representation,
-            intraday_summary_features=config.intraday_summary_features,
-            train_source=config.train_source,
-            val_source=config.val_source,
-            test_source=config.test_source,
-            source_columns=config.source_columns,
-            num_workers=config.num_workers,
-            pin_memory=config.pin_memory,
-            persistent_workers=config.persistent_workers,
-            prefetch_factor=config.prefetch_factor,
+        self.train_loader, self.val_loader, self.test_loader, self.metadata = build_inpainting_dataloaders(
+            config.harxhar_path, config
         )
+
+        # Diurnal prior: convert to tensor on device if enabled, else None
+        if config.diurnal_prior and self.metadata.get("diurnal_mean") is not None:
+            self.diurnal_mean = torch.tensor(self.metadata["diurnal_mean"], dtype=torch.float32, device=self.device)
+        else:
+            self.diurnal_mean = None
 
         # Model
         self.model = ConditionalVectorField(
@@ -86,17 +76,24 @@ class CFMTrainer:
         self.epoch = 0
         self.best_val_loss = float("inf")
 
-    def _compute_loss(self, proportions: torch.Tensor, conditions: torch.Tensor) -> torch.Tensor:
+    def _compute_loss(self, x_1: torch.Tensor, cond: torch.Tensor) -> torch.Tensor:
         """Dispatch to bridge or standard CFM loss based on config."""
         if self.config.bridge_interpolation:
             return bridge_cfm_loss(
                 self.model,
-                proportions,
-                conditions,
-                intermediate_blocks=self.config.intermediate_blocks,
+                x_1,
+                cond,
+                intermediate_blocks=self.config.block_granularities,
                 sigma_min=self.config.sigma_min,
             )
-        return cfm_loss(self.model, proportions, conditions, self.config.sigma_min)
+        return cfm_loss(
+            self.model,
+            x_1,
+            cond,
+            self.config.sigma_min,
+            prior_mean=self.diurnal_mean,
+            prior_std=self.config.diurnal_prior_std,
+        )
 
     def train_epoch(self) -> float:
         """Run one training epoch. Returns mean loss."""
@@ -104,12 +101,12 @@ class CFMTrainer:
         total_loss = 0.0
         n_batches = 0
 
-        for proportions, conditions in self.train_loader:
-            proportions = proportions.to(self.device)
-            conditions = conditions.to(self.device)
+        for x_1, cond in self.train_loader:
+            x_1 = x_1.to(self.device)
+            cond = cond.to(self.device)
 
             self.optimizer.zero_grad()
-            loss = self._compute_loss(proportions, conditions)
+            loss = self._compute_loss(x_1, cond)
             loss.backward()
 
             torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.config.grad_clip)
@@ -128,11 +125,11 @@ class CFMTrainer:
         total_loss = 0.0
         n_batches = 0
 
-        for proportions, conditions in self.val_loader:
-            proportions = proportions.to(self.device)
-            conditions = conditions.to(self.device)
+        for x_1, cond in self.val_loader:
+            x_1 = x_1.to(self.device)
+            cond = cond.to(self.device)
 
-            loss = self._compute_loss(proportions, conditions)
+            loss = self._compute_loss(x_1, cond)
             total_loss += loss.item()
             n_batches += 1
 
@@ -184,13 +181,15 @@ class CFMTrainer:
 
     def save_checkpoint(self, path: str) -> None:
         """Save model, optimizer, scheduler state, and metadata."""
+        diurnal_np = self.diurnal_mean.cpu().numpy() if self.diurnal_mean is not None else None
         torch.save(
             {
                 "model_state_dict": self.model.state_dict(),
                 "optimizer_state_dict": self.optimizer.state_dict(),
                 "epoch": self.epoch,
                 "best_val_loss": self.best_val_loss,
-                "scaler_stats": self.scaler_stats,
+                "scaler_stats": {},  # kept for backward compat
+                "diurnal_mean": diurnal_np,
                 "config": self.config,
             },
             path,
@@ -203,4 +202,10 @@ class CFMTrainer:
         self.optimizer.load_state_dict(ckpt["optimizer_state_dict"])
         self.epoch = ckpt["epoch"]
         self.best_val_loss = ckpt["best_val_loss"]
-        self.scaler_stats = ckpt["scaler_stats"]
+
+        # Restore diurnal mean if present in checkpoint
+        diurnal_np = ckpt.get("diurnal_mean", None)
+        if diurnal_np is not None:
+            self.diurnal_mean = torch.tensor(diurnal_np, dtype=torch.float32, device=self.device)
+        else:
+            self.diurnal_mean = None

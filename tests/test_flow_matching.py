@@ -13,7 +13,7 @@ from cfm.model.vector_field import ConditionalVectorField
 
 
 def test_cfm_loss_scalar():
-    B, D, cond_dim = 8, 48, 6
+    B, D, cond_dim = 8, 48, 97
     model = ConditionalVectorField(output_dim=D, cond_dim=cond_dim, hidden_dims=[32, 32])
 
     x_1 = torch.randn(B, D)
@@ -22,6 +22,37 @@ def test_cfm_loss_scalar():
     loss = cfm_loss(model, x_1, cond, sigma_min=1e-4)
 
     assert loss.dim() == 0  # scalar
+    assert loss.requires_grad
+
+
+def test_cfm_loss_with_diurnal_prior():
+    """cfm_loss with a diurnal prior_mean should produce a finite scalar loss."""
+    B, D, cond_dim = 8, 48, 97
+    model = ConditionalVectorField(output_dim=D, cond_dim=cond_dim, hidden_dims=[32, 32])
+
+    x_1 = torch.randn(B, D)
+    cond = torch.randn(B, cond_dim)
+    prior_mean = torch.randn(D)  # shape (48,)
+
+    loss = cfm_loss(model, x_1, cond, sigma_min=1e-4, prior_mean=prior_mean, prior_std=1.0)
+
+    assert loss.dim() == 0
+    assert torch.isfinite(loss)
+    assert loss.requires_grad
+
+
+def test_cfm_loss_without_prior():
+    """cfm_loss with prior_mean=None (backward compat) should work."""
+    B, D, cond_dim = 8, 48, 97
+    model = ConditionalVectorField(output_dim=D, cond_dim=cond_dim, hidden_dims=[32, 32])
+
+    x_1 = torch.randn(B, D)
+    cond = torch.randn(B, cond_dim)
+
+    loss = cfm_loss(model, x_1, cond, sigma_min=1e-4, prior_mean=None)
+
+    assert loss.dim() == 0
+    assert torch.isfinite(loss)
     assert loss.requires_grad
 
 

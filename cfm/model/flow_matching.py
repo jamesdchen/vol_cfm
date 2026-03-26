@@ -39,18 +39,22 @@ def cfm_loss(
     x_1: Tensor,
     cond: Tensor,
     sigma_min: float = 1e-4,
+    prior_mean: Tensor | None = None,
+    prior_std: float = 1.0,
 ) -> Tensor:
     """Compute the OT-CFM training loss.
 
-    Samples noise x_0, pairs it with data x_1 via OT, builds the linear
-    interpolant x_t, and regresses the predicted velocity toward the
-    analytic conditional velocity u_t.
+    Samples source x_0 from the prior (standard Gaussian or diurnal),
+    pairs with data x_1 via OT, builds the linear interpolant x_t,
+    and regresses the predicted velocity toward the analytic velocity u_t.
 
     Args:
         vector_field: The neural vector field network.
         x_1:   Target (data) samples, shape (B, 48).
-        cond:  Conditioning scalars, shape (B, cond_dim).
+        cond:  Conditioning tensor, shape (B, cond_dim).
         sigma_min: Minimum noise scale (controls path straightness).
+        prior_mean: Mean of source distribution, shape (48,). If None, uses N(0, I).
+        prior_std: Std of source distribution.
 
     Returns:
         Scalar MSE loss.
@@ -59,8 +63,11 @@ def cfm_loss(
     B, D = x_1.shape
     device = x_1.device
 
-    # Sample noise and time
-    x_0 = torch.randn_like(x_1)
+    # Sample from prior
+    if prior_mean is not None:
+        x_0 = prior_mean.unsqueeze(0) + prior_std * torch.randn_like(x_1)
+    else:
+        x_0 = torch.randn_like(x_1)
     t = torch.rand(B, device=device)
 
     # OT pairing

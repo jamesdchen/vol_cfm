@@ -181,79 +181,43 @@ def compute_intraday_summary(intraday_48: np.ndarray) -> np.ndarray:
     )
 
 
-def build_cfm_pairs(
+def build_inpainting_pairs(
     daily_df: pd.DataFrame,
-    context_days: int = 5,
-    intermediate_blocks: list[int] | None = None,
-    intermediate_representation: str = "sqrt",
-    intraday_summary_features: bool = False,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Build (condition, target) pairs for conditional flow matching.
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """Build data arrays for inpainting-style flow matching.
+
+    Every day with 48 bars and nonzero daily RV is a valid sample.
+    Mask construction is deferred to the Dataset's ``__getitem__``.
 
     Parameters
     ----------
     daily_df : pd.DataFrame
-        Output of compute_daily_rv with columns [date, daily_rv, intraday_48].
-    context_days : int
-        Number of lagged daily RV values in the condition vector.
-    intermediate_blocks : list[int] or None
-        Block sizes (in 30-min bars) for sub-daily RV conditioning.
-        E.g., [12] gives 4 quarter-day (6h) blocks per lag day.
-    intermediate_representation : str
-        How to encode intermediate RV: "sqrt", "proportion", or "both".
-    intraday_summary_features : bool
-        If True, append ``compute_intraday_summary`` for each lagged day.
+        Output of ``compute_daily_rv`` with columns
+        ``[date, daily_rv, intraday_48]``.
 
     Returns
     -------
-    conditions : np.ndarray, shape (N, cond_dim)
-        Daily sqrt(RV) features followed by intermediate RV features from lagged days.
     proportions : np.ndarray, shape (N, 48)
         Intraday RV as proportion of daily total.
+    daily_rvs : np.ndarray, shape (N,)
+        Daily RV scalars.
+    intraday_raw : np.ndarray, shape (N, 48)
+        Raw intraday RV (needed for on-the-fly mask construction).
     dates : np.ndarray, shape (N,)
         Date for each sample.
     """
-    if intermediate_blocks is None:
-        intermediate_blocks = []
-
     daily_rv = daily_df["daily_rv"].values
     intraday = np.stack(list(daily_df["intraday_48"].values))
     dates_arr = daily_df["date"].values
 
-    sqrt_rv = np.sqrt(daily_rv)
+    # Filter out zero-RV days
+    valid = daily_rv > 0
+    daily_rv = daily_rv[valid]
+    intraday = intraday[valid]
+    dates_arr = dates_arr[valid]
 
-    conditions_list = []
-    proportions_list = []
-    dates_list = []
+    proportions = (intraday / daily_rv[:, None]).astype(np.float32)
+    daily_rvs = daily_rv.astype(np.float32)
+    intraday_raw = intraday.astype(np.float32)
 
-    for i in range(context_days, len(daily_df)):
-        # Skip days with zero daily RV (can't compute proportions)
-        if daily_rv[i] == 0:
-            continue
-
-        # Daily sqrt(RV): [today, t-1, ..., t-context_days]
-        cond_parts = [sqrt_rv[i - context_days : i + 1][::-1].copy()]
-
-        # Intermediate features from lagged days only (t-1 through t-context_days)
-        for j in range(1, context_days + 1):
-            for bs in intermediate_blocks:
-                block_rv = compute_block_rv(intraday[i - j], bs)
-                if intermediate_representation in ("sqrt", "both"):
-                    cond_parts.append(np.sqrt(block_rv))
-                if intermediate_representation in ("proportion", "both"):
-                    cond_parts.append(block_rv / daily_rv[i - j])
-
-            if intraday_summary_features:
-                cond_parts.append(compute_intraday_summary(intraday[i - j]))
-
-        prop = intraday[i] / daily_rv[i]
-
-        conditions_list.append(np.concatenate(cond_parts))
-        proportions_list.append(prop)
-        dates_list.append(dates_arr[i])
-
-    conditions = np.array(conditions_list, dtype=np.float32)
-    proportions = np.array(proportions_list, dtype=np.float32)
-    dates = np.array(dates_list)
-
-    return conditions, proportions, dates
+    return proportions, daily_rvs, intraday_raw, dates_arr

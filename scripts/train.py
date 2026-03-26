@@ -27,7 +27,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--checkpoint-dir", type=str, default="checkpoints")
     parser.add_argument("--warmup-steps", type=int, default=500)
     parser.add_argument("--grad-clip", type=float, default=5.0)
-    parser.add_argument("--context-days", type=int, default=5)
     parser.add_argument("--train-end", type=str, default="2020-12-31")
     parser.add_argument("--val-end", type=str, default="2022-12-31")
     parser.add_argument("--checkpoint-every", type=int, default=10)
@@ -35,22 +34,38 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--bridge-interpolation",
         action="store_true",
-        help="Enable coarse-to-fine bridge interpolation using intermediate_blocks as waypoints.",
+        help="Enable coarse-to-fine bridge interpolation using block_granularities as waypoints.",
     )
     parser.add_argument(
-        "--intermediate-blocks",
+        "--block-granularities",
         type=int,
         nargs="*",
-        default=[],
-        help="Block sizes (in 30-min bars) for intermediate RV conditioning. "
-        "E.g., 12 for 6h blocks, 6 for 3h blocks. Empty = baseline.",
+        default=[12],
+        help="Block sizes (in 30-min bars) for inpainting mask granularities. E.g., 12 for 6h blocks, 6 for 3h blocks.",
     )
     parser.add_argument(
-        "--intermediate-representation",
+        "--sparse-bar-prob",
+        type=float,
+        default=0.0,
+        help="Probability of revealing individual sparse bars during training.",
+    )
+    parser.add_argument(
+        "--mask-schedule",
         type=str,
-        default="sqrt",
-        choices=["sqrt", "proportion", "both"],
-        help="How to represent intermediate RV features.",
+        default="random_blocks",
+        choices=["random_blocks", "all_blocks"],
+        help="How to sample block masks during training.",
+    )
+    parser.add_argument(
+        "--no-diurnal-prior",
+        action="store_true",
+        help="Disable diurnal prior (use standard Gaussian source).",
+    )
+    parser.add_argument(
+        "--diurnal-prior-std",
+        type=float,
+        default=1.0,
+        help="Standard deviation of the diurnal prior source distribution.",
     )
     parser.add_argument(
         "--train-source", type=str, default="vwstock_stats.parquet", help="Parquet file for training data"
@@ -59,9 +74,6 @@ def parse_args() -> argparse.Namespace:
         "--val-source", type=str, default="ewstock_stats.parquet", help="Parquet file for validation data"
     )
     parser.add_argument("--test-source", type=str, default="core_stats.parquet", help="Parquet file for test data")
-    parser.add_argument(
-        "--no-intraday-summary", action="store_true", help="Disable intraday summary features (high/low/start/end)"
-    )
     parser.add_argument("--num-workers", type=int, default=0, help="DataLoader workers (0=auto-detect)")
     parser.add_argument("--no-pin-memory", action="store_true", help="Disable pin_memory in DataLoader")
     parser.add_argument("--verbose", action="store_true", help="Enable debug logging")
@@ -77,7 +89,6 @@ def main():
 
     config = CFMConfig(
         harxhar_path=args.harxhar_path,
-        context_days=args.context_days,
         train_end=args.train_end,
         val_end=args.val_end,
         batch_size=args.batch_size,
@@ -89,14 +100,16 @@ def main():
         seed=args.seed,
         checkpoint_every=args.checkpoint_every,
         sigma_min=args.sigma_min,
-        intermediate_blocks=args.intermediate_blocks,
-        intermediate_representation=args.intermediate_representation,
+        block_granularities=args.block_granularities,
+        sparse_bar_prob=args.sparse_bar_prob,
+        mask_schedule=args.mask_schedule,
+        diurnal_prior=not args.no_diurnal_prior,
+        diurnal_prior_std=args.diurnal_prior_std,
         checkpoint_dir=args.checkpoint_dir,
         train_source=args.train_source,
         val_source=args.val_source,
         test_source=args.test_source,
         bridge_interpolation=args.bridge_interpolation,
-        intraday_summary_features=not args.no_intraday_summary,
         num_workers=args.num_workers,
         pin_memory=not args.no_pin_memory,
     )

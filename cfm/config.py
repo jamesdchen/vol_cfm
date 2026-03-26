@@ -5,7 +5,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 PERIODS_PER_DAY = 48
-CONTEXT_DAYS = 5
 OUTPUT_DIM = 48
 START_DATE = "2005-01-01"
 FRIDAY_CLOSE = "20:00"
@@ -16,14 +15,18 @@ SUNDAY_OPEN = "18:30"
 class CFMConfig:
     # Data
     harxhar_path: str = "data/all30min"
-    context_days: int = CONTEXT_DAYS
     output_dim: int = OUTPUT_DIM
     train_end: str = "2020-12-31"
     val_end: str = "2022-12-31"
 
-    # Intermediate conditioning
-    intermediate_blocks: list[int] = field(default_factory=list)
-    intermediate_representation: str = "sqrt"  # "sqrt" | "proportion" | "both"
+    # Inpainting conditioning
+    block_granularities: list[int] = field(default_factory=lambda: [12])
+    sparse_bar_prob: float = 0.0
+    mask_schedule: str = "random_blocks"  # "random_blocks" | "all_blocks"
+
+    # Diurnal prior
+    diurnal_prior: bool = True
+    diurnal_prior_std: float = 1.0
 
     # Source-based split
     train_source: str = "vwstock_stats.parquet"
@@ -37,9 +40,6 @@ class CFMConfig:
         }
     )
 
-    # Intraday summary features
-    intraday_summary_features: bool = True
-
     # Model (vector field network)
     hidden_dims: list[int] = field(default_factory=lambda: [256, 256, 256])
     time_embed_dim: int = 32
@@ -50,22 +50,16 @@ class CFMConfig:
     bridge_interpolation: bool = False
 
     def __post_init__(self) -> None:
-        # Validate intermediate block sizes
-        for bs in self.intermediate_blocks:
+        for bs in self.block_granularities:
             if PERIODS_PER_DAY % bs != 0:
                 raise ValueError(
                     f"Block size {bs} does not evenly divide {PERIODS_PER_DAY}. "
                     f"Valid sizes: 1, 2, 3, 4, 6, 8, 12, 16, 24, 48."
                 )
-        if self.bridge_interpolation and not self.intermediate_blocks:
-            raise ValueError(
-                "bridge_interpolation=True requires at least one entry in intermediate_blocks."
-            )
-        if self.intermediate_representation not in ("sqrt", "proportion", "both"):
-            raise ValueError(
-                f"Invalid intermediate_representation: {self.intermediate_representation!r}. "
-                f"Must be 'sqrt', 'proportion', or 'both'."
-            )
+        if self.mask_schedule not in ("random_blocks", "all_blocks"):
+            raise ValueError(f"Invalid mask_schedule: {self.mask_schedule!r}. Must be 'random_blocks' or 'all_blocks'.")
+        if not 0.0 <= self.sparse_bar_prob <= 1.0:
+            raise ValueError(f"sparse_bar_prob must be in [0, 1], got {self.sparse_bar_prob}")
 
         # Auto-detect num_workers
         if self.num_workers == 0:
@@ -73,13 +67,8 @@ class CFMConfig:
 
             self.num_workers = min(os.cpu_count() or 4, 8)
 
-        # Compute cond_dim: daily features + intermediate features from lagged days
-        base = self.context_days + 1
-        n_intermediate = sum(PERIODS_PER_DAY // bs for bs in self.intermediate_blocks)
-        multiplier = 2 if self.intermediate_representation == "both" else 1
-        intermediate_total = n_intermediate * multiplier * self.context_days
-        intraday_summary_total = 4 * self.context_days if self.intraday_summary_features else 0
-        self.cond_dim = base + intermediate_total + intraday_summary_total
+        # cond_dim: mask(48) + known_values(48) + daily_rv(1)
+        self.cond_dim = 2 * PERIODS_PER_DAY + 1
 
     # Training
     batch_size: int = 256

@@ -1,6 +1,6 @@
 """ODE-based sampler for the trained conditional flow matching model.
 
-Integrates the learned vector field from t=0 (noise) to t=1 (data) using
+Integrates the learned vector field from t=0 (prior) to t=1 (data) using
 either torchdiffeq's adaptive ODE solver or a simple Euler fallback.
 """
 
@@ -34,6 +34,8 @@ class CFMSampler:
         vector_field: Trained conditional vector field network.
         solver: ODE solver method for torchdiffeq (default ``"dopri5"``).
         num_steps: Number of Euler steps when torchdiffeq is unavailable.
+        diurnal_mean: Mean of the source distribution, shape (48,). None for N(0,I).
+        diurnal_std: Std of the source distribution.
         bridge_blocks: If set, enables segmented ODE integration with
             optional waypoint guidance at time boundaries.
         bridge_guidance_strength: Interpolation weight toward block-projected
@@ -45,12 +47,16 @@ class CFMSampler:
         vector_field: ConditionalVectorField,
         solver: str = "dopri5",
         num_steps: int = 100,
+        diurnal_mean: Tensor | None = None,
+        diurnal_std: float = 1.0,
         bridge_blocks: list[int] | None = None,
         bridge_guidance_strength: float = 0.0,
     ) -> None:
         self.vector_field = vector_field
         self.solver = solver
         self.num_steps = num_steps
+        self.diurnal_mean = diurnal_mean
+        self.diurnal_std = diurnal_std
         self.bridge_blocks = bridge_blocks
         self.bridge_guidance_strength = bridge_guidance_strength
 
@@ -61,8 +67,8 @@ class CFMSampler:
             self._time_bounds = [0.0, 1.0]
 
     @torch.no_grad()
-    def sample(self, cond: Tensor, num_samples: int = 1) -> Tensor:
-        """Generate samples by integrating the vector field ODE.
+    def sample(self, cond: Tensor) -> Tensor:
+        """Generate raw samples by integrating the vector field ODE.
 
         When *bridge_blocks* is configured the integration is split into
         segments at the bridge time boundaries.  Between segments an
@@ -70,9 +76,7 @@ class CFMSampler:
         structure.
 
         Args:
-            cond: Conditioning tensor, shape (B, cond_dim).
-            num_samples: Unused (B is inferred from *cond*); kept for API
-                compatibility.
+            cond: Conditioning tensor, shape (B, 97).
 
         Returns:
             Generated samples at t=1, shape (B, 48).
@@ -82,7 +86,12 @@ class CFMSampler:
         device = cond.device
         output_dim = self.vector_field.output_dim
 
-        x_0 = torch.randn(B, output_dim, device=device)
+        # Sample from prior
+        if self.diurnal_mean is not None:
+            mean = self.diurnal_mean.to(device)
+            x_0 = mean.unsqueeze(0) + self.diurnal_std * torch.randn(B, output_dim, device=device)
+        else:
+            x_0 = torch.randn(B, output_dim, device=device)
 
         def ode_fn(t_scalar: Tensor, x: Tensor) -> Tensor:
             t_batch = t_scalar.expand(B)
@@ -136,22 +145,14 @@ class CFMSampler:
         return x_1
 
     @torch.no_grad()
-    def sample_consistent(self, daily_rv: Tensor, context: Tensor) -> Tensor:
-        """Generate intraday RV that sums to the observed daily RV.
-
-        Builds the conditioning vector, samples raw network output, then
-        maps to a valid simplex (softmax) and rescales by daily RV.
+    def sample_proportions(self, cond: Tensor) -> Tensor:
+        """Generate valid proportion vectors (positive, sum to 1).
 
         Args:
-            daily_rv: Scalar daily realized volatility per sample, shape (B,).
-            context:  Recent context features, shape (B, cond_dim - 1).
+            cond: Conditioning tensor, shape (B, 97).
 
         Returns:
-            Intraday realized volatility, shape (B, 48), summing to
-            *daily_rv* per row.
+            Proportion vectors, shape (B, 48).
         """
-        cond = torch.cat([daily_rv.unsqueeze(-1).sqrt(), context], dim=-1)
         raw = self.sample(cond)
-        proportions = F.softmax(raw, dim=-1)  # (B, 48), positive & sums to 1
-        intraday = proportions * daily_rv.unsqueeze(-1)
-        return intraday
+        return F.softmax(raw, dim=-1)
