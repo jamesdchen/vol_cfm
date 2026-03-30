@@ -1,3 +1,6 @@
+# HPC orchestration (install via: pip install -e /path/to/claude-hpc)
+claude-hpc
+
 torch>=2.0
 torchdiffeq>=0.2.3
 pandas>=2.0
