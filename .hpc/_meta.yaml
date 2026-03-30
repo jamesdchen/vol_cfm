@@ -1,0 +1,34 @@
+collected_at: '2026-03-30T21:04:09'
+sources:
+- path: scripts/train.py
+  sha256: 1dc87eaccd5747c2ff7c7ba411427d68e266f8d10f9f5195257bd94150ab88ae
+- path: cfm/cli.py
+  sha256: 5754cef4c47ced8f8b07eb4fd632b9b0fc6d6f7c2f30b2916e84eae19d0b3c03
+- path: cfm/data/loading.py
+  sha256: e00a04f7c794d504fe6170cc1bafc0c4d48aaef2e65327f61ed674679c21a69a
+- path: cfm/logging.py
+  sha256: 02c4c2055a2bf70564dff510c677d0d8c8619168789f1be5034f4cb335605fff
+- path: cfm/model/__init__.py
+  sha256: 20c8344e2594b1b38cb97e1f4c526c879fdcf997af0d1d09ce10a6a97b48435e
+- path: cfm/config.py
+  sha256: 0e46aff96998a9860dbe3734be699294671725e269fea019bf7b457e8085c69c
+- path: cfm/model/vector_field.py
+  sha256: b5770df703f666b3b666fdbd41f910895ccb3d560b00b0267c5e2103025fd433
+- path: cfm/data/dataset.py
+  sha256: 33d94b31d306f8d65b41a7185c7fff2c459ced83e675b4857a838fb4722782c4
+- path: cfm/training/trainer.py
+  sha256: 200a2770de3cb453371867fae9e269f52f6ed59f0e1ab4accf464451c5f9cddf
+- path: cfm/model/flow_matching.py
+  sha256: dc57506d58796ac8f392322df8c79c0cc07dc3b619ada52fcde90a349fb6c444
+- path: cfm/training/scheduler.py
+  sha256: 5c339031719873e9567923385ee8aa327de64a1efbc82562d3f2175e73041ad3
+- path: scripts/generate.py
+  sha256: 5118581335bbfa7d466247441f7670db860c7e744e6d44f2c16b92e3f18ca197
+- path: cfm/model/sampler.py
+  sha256: 4c5328d40aba63ff044706cc8a207c62ccc62f089cbe7e7925b0649633d7c04e
+- path: scripts/evaluate.py
+  sha256: 6454eb5db3037658e8acd70a3456fb5f60077c73603bcff0bbc7a1a4d87fb470
+- path: cfm/evaluation/metrics.py
+  sha256: 9a3a68be3f7dce830910b6019488b8f85c126d5c6711f7e7108179856e2b99ee
+- path: cfm/evaluation/visualize.py
+  sha256: 802c7222d9c4404bcc204ab913d68080144ce1527be3535d1a8b2fb64dfa2661

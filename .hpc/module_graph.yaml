@@ -1,0 +1,44 @@
+train:
+- scripts/train.py:
+  - cfm/cli.py:
+    - cfm/data/loading.py
+    - cfm/logging.py
+    - cfm/model/__init__.py
+    - cfm/config.py
+    - cfm/model/vector_field.py
+    - cfm/data/dataset.py
+  - cfm/config.py
+  - cfm/training/trainer.py:
+    - cfm/cli.py
+    - cfm/config.py
+    - cfm/data/dataset.py
+    - cfm/logging.py
+    - cfm/model/flow_matching.py
+    - cfm/model/vector_field.py
+    - cfm/training/scheduler.py
+generate:
+- scripts/generate.py:
+  - cfm/cli.py:
+    - cfm/data/loading.py
+    - cfm/logging.py
+    - cfm/model/__init__.py
+    - cfm/config.py
+    - cfm/model/vector_field.py
+    - cfm/data/dataset.py
+  - cfm/model/sampler.py:
+    - cfm/model/flow_matching.py
+    - cfm/model/vector_field.py
+evaluate:
+- scripts/evaluate.py:
+  - cfm/cli.py:
+    - cfm/data/loading.py
+    - cfm/logging.py
+    - cfm/model/__init__.py
+    - cfm/config.py
+    - cfm/model/vector_field.py
+    - cfm/data/dataset.py
+  - cfm/evaluation/metrics.py
+  - cfm/evaluation/visualize.py
+  - cfm/model/sampler.py:
+    - cfm/model/flow_matching.py
+    - cfm/model/vector_field.py

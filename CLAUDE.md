@@ -11,7 +11,18 @@ cfm/
 └── config.py      CFMConfig dataclass
 ```
 
-## Pipeline (3-stage, managed by claude-hpc)
+## Local Development (Notebook)
+
+Run the full pipeline locally at small scale:
+
+```bash
+jupyter lab notebooks/local_pipeline.ipynb
+```
+
+The notebook runs train → generate → evaluate with reduced configs (5 epochs,
+batch_size=64, 20 ODE steps). Same `cfm.*` code as HPC, just faster iteration.
+
+## HPC Pipeline (full scale)
 
 | Stage | Type | Script | Depends on |
 |-------|------|--------|------------|
@@ -19,7 +30,7 @@ cfm/
 | generate | array (10 chunks) | `python scripts/generate.py` | train |
 | evaluate | single | `python scripts/evaluate.py` | generate |
 
-Stages are defined in `project.yaml` and submitted via claude-hpc `/submit`.
+Stages are defined in `project.yaml` and submitted via `/submit` (from claude-hpc CLI tooling).
 
 ## Scripts
 
@@ -32,7 +43,8 @@ python scripts/export_dataset.py      # Export dataset utility
 
 ## HPC Configuration
 
-All HPC infrastructure is provided by the `claude-hpc` package. No project-specific job templates.
+All HPC infrastructure is provided by the `claude-hpc` CLI tooling (not a Python
+dependency). No project-specific job templates.
 
 - **Config files:** `project.yaml` (stages, resources), `clusters.yaml` (in claude-hpc)
 - **Templates:** Generic `gpu_array` from claude-hpc (`hpc.get_template_path()`)
