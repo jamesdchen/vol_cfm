@@ -49,12 +49,19 @@ python scripts/export_dataset.py --harxhar-path data/all30min
 
 All scripts support `--verbose` and `--quiet` flags for log verbosity control.
 
-## SLURM
+## HPC Pipeline
 
-```bash
-sbatch slurm/train.slurm
-sbatch slurm/generate.slurm
-```
+All HPC infrastructure is provided by the `claude-hpc` package. Stages are defined in `project.yaml` and submitted via `/submit`.
+
+| Stage | Type | Script | GPU | Depends on |
+|-------|------|--------|-----|------------|
+| train | single | `python scripts/train.py` | A100 | -- |
+| generate | array (10 chunks) | `python scripts/generate.py` | A100 | train |
+| evaluate | single | `python scripts/evaluate.py` | A100 | generate |
+
+- **Cluster:** Discovery (USC), SLURM scheduler
+- **Config:** `project.yaml` (stages, resources), `clusters.yaml` (in claude-hpc)
+- **Templates:** Generic `gpu_array` from claude-hpc
 
 ## Architecture
 

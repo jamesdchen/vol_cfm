@@ -32,12 +32,24 @@ python scripts/export_dataset.py      # Export dataset utility
 
 ## HPC Configuration
 
-- **Cluster:** Discovery (USC), SLURM scheduler
-- **Account:** pollok_1603
-- **Username:** jc_905
-- **Remote path:** /home1/jc_905/vol_cfm
-- **Conda env:** project-cucuringu
-- **GPU constraint:** a100|a40|v100|l40s
+All HPC infrastructure is provided by the `claude-hpc` package. No project-specific job templates.
+
+- **Config files:** `project.yaml` (stages, resources), `clusters.yaml` (in claude-hpc)
+- **Templates:** Generic `gpu_array` from claude-hpc (`hpc.get_template_path()`)
+- **Submission:** Via claude-hpc `/submit` command (reads project.yaml stages)
+- **Cluster:** Discovery (USC), SLURM scheduler, account `pollok_1603`
+
+### Key env vars (set by generic template)
+| Variable | Purpose |
+|----------|---------|
+| `CONDA_SOURCE` | Path to conda.sh on cluster |
+| `CONDA_ENV` | Conda environment name |
+| `MODULES` | Space-separated module names |
+| `EXECUTOR` | Python command from stage definition |
+| `CHUNK_ID` | 0-based array task index |
+| `TOTAL_CHUNKS` | Total array tasks |
+| `RESULT_DIR` | Output directory |
+| `EXTRA_ARGS` | Additional CLI arguments |
 
 ## Data Layout
 

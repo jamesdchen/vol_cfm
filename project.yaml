@@ -4,11 +4,16 @@ remote_path: /home1/jc_905/vol_cfm
 conda_env: project-cucuringu
 rsync_exclude: [.git/, samples/, __pycache__, "*.pyc", .mypy_cache/, data/]
 
+cluster_envs:
+  discovery:
+    dl: { modules: "", conda_env: project-cucuringu }
+
 stages:
   train:
     type: single
     executor: "python scripts/train.py"
     template: gpu_array
+    env_group: dl
     resources: { cpus: 8, mem: "64G", walltime: "2:00:00", gpus: 1, gpu_type: a100 }
     result_pattern: "checkpoints/best.pt"
 
@@ -17,6 +22,7 @@ stages:
     depends_on: train
     executor: "python scripts/generate.py --checkpoint checkpoints/best.pt --output-dir samples --seed $((42 + CHUNK_ID))"
     template: gpu_array
+    env_group: dl
     resources: { cpus: 8, mem: "64G", walltime: "0:30:00", gpus: 1, gpu_type: a100 }
     chunks: 10
     result_pattern: "samples/seed_*/chunk_*.pt"
@@ -26,6 +32,7 @@ stages:
     depends_on: generate
     executor: "python scripts/evaluate.py --checkpoint checkpoints/best.pt"
     template: gpu_array
+    env_group: dl
     resources: { cpus: 8, mem: "64G", walltime: "0:30:00", gpus: 1, gpu_type: a100 }
     result_pattern: "eval_results/metrics.json"
     summary_pattern: "eval_results/*"
