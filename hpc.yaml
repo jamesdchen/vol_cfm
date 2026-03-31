@@ -1,0 +1,37 @@
+# Conditional Flow Matching for Intraday RV
+project: vol_cfm
+cluster: discovery
+remote_path: /home1/jc_905/vol_cfm
+rsync_exclude: [.git/, samples/, __pycache__, "*.pyc", .mypy_cache/, data/]
+
+cluster_envs:
+  discovery:
+    dl: { modules: "", conda_env: project-cucuringu }
+
+profiles:
+  cfm:
+    stages:
+      train:
+        run: "python scripts/train.py"
+        env_group: dl
+        resources: { cpus: 8, mem: "64G", walltime: "2:00:00", gpus: 1, gpu_type: a100 }
+        results:
+          pattern: "checkpoints/best.pt"
+
+      generate:
+        depends_on: train
+        run: "python scripts/generate.py --checkpoint checkpoints/best.pt --output-dir samples --seed $((42 + CHUNK_ID))"
+        env_group: dl
+        resources: { cpus: 8, mem: "64G", walltime: "0:30:00", gpus: 1, gpu_type: a100 }
+        chunking: { total: 10 }
+        results:
+          pattern: "samples/seed_*/chunk_*.pt"
+
+      evaluate:
+        depends_on: generate
+        run: "python scripts/evaluate.py --checkpoint checkpoints/best.pt"
+        env_group: dl
+        resources: { cpus: 8, mem: "64G", walltime: "0:30:00", gpus: 1, gpu_type: a100 }
+        results:
+          pattern: "eval_results/metrics.json"
+          summary_pattern: "eval_results/*"
